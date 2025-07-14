@@ -1,9 +1,13 @@
 import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const supabaseKey =
+  typeof window === "undefined"
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY // Use service key on server
+    : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY // Use anon key on client
+
+export const supabase = createClient(supabaseUrl, supabaseKey!)
 
 export interface CoinData {
   id?: number
@@ -27,6 +31,12 @@ export interface CoinData {
   logo_url?: string
   logo_storage_path?: string
   created_at?: string
+  // New pre-calculated score fields from database
+  health_score?: number | null
+  twitter_subscore?: number | null
+  github_subscore?: number | null
+  consistency_score?: number | null
+  gem_score?: number | null
 }
 
 export async function fetchCoins(): Promise<{ coins: CoinData[]; error?: string }> {

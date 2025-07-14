@@ -5,8 +5,9 @@ import { groq } from "@ai-sdk/groq"
 import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { getUserPortfolio } from "../utils/portfolio"
-import { fetchCoins } from "../utils/supabase"
-import { calculateBeatScore, formatPrice } from "../utils/beat-calculator"
+import { fetchCoins } from "./fetch-coins"
+import { getHealthScore } from "../utils/beat-calculator"
+import { formatPrice } from "../utils/beat-calculator"
 import type { AuthUser } from "../utils/supabase-auth"
 
 interface PortfolioAnalysis {
@@ -156,78 +157,70 @@ async function generateWithFallback(
   }
 }
 
-// Enhanced web search function to get real-time crypto news
+// Add a fetchWithTimeout helper at the top of the file
+async function fetchWithTimeout(resource: string, options: any = {}, timeout = 3000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(resource, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    return null;
+  }
+}
+
+// Refactor searchCryptoNews to run all fetches in parallel
 async function searchCryptoNews(coins: string[]): Promise<any[]> {
   try {
     const searchResults = []
-
+    const queries = []
     for (const coin of coins.slice(0, 5)) {
-      // Increased to 5 coins
-      try {
-        // Multiple search queries for comprehensive coverage
-        const searchQueries = [
-          `${coin} contract migration token swap 2024 2025`,
-          `${coin} delisted exchange binance coinbase kraken`,
-          `${coin} security vulnerability hack exploit`,
-          `${coin} mainnet upgrade hard fork`,
-          `${coin} exchange listing new trading pairs`,
-        ]
-
-        for (const query of searchQueries) {
-          try {
-            // Try multiple search approaches
-            const searches = [
-              `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
-              `https://api.duckduckgo.com/?q=${encodeURIComponent(`${coin} crypto news`)}&format=json&no_html=1&skip_disambig=1`,
-            ]
-
-            for (const searchUrl of searches) {
-              const response = await fetch(searchUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (compatible; CocoriBot/1.0)",
-                },
-              })
-
-              if (response.ok) {
-                const data = await response.json()
-
-                // Check multiple data sources
-                const sources = [
-                  data.AbstractText,
-                  data.Answer,
-                  data.RelatedTopics?.[0]?.Text,
-                  data.Results?.[0]?.Text,
-                ].filter(Boolean)
-
-                if (sources.length > 0) {
-                  searchResults.push({
-                    coin,
-                    query: query.split(" ").slice(1, 4).join(" "), // Clean query
-                    result: sources[0],
-                    source: "Web Search",
-                    timestamp: new Date().toISOString(),
-                  })
-                  break // Found result, move to next query
-                }
-              }
-            }
-          } catch (searchError) {
-            console.error(`Search error for ${query}:`, searchError)
-          }
+      for (const query of [
+        `${coin} contract migration token swap 2024 2025`,
+        `${coin} delisted exchange binance coinbase kraken`,
+        `${coin} security vulnerability hack exploit`,
+        `${coin} mainnet upgrade hard fork`,
+        `${coin} exchange listing new trading pairs`,
+      ]) {
+        for (const url of [
+          `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+          `https://api.duckduckgo.com/?q=${encodeURIComponent(`${coin} crypto news`)}&format=json&no_html=1&skip_disambig=1`,
+        ]) {
+          queries.push({ coin, query, url })
         }
-      } catch (coinError) {
-        console.error(`Error processing ${coin}:`, coinError)
-        searchResults.push({
-          coin,
-          query: "general search",
-          result: `Unable to fetch current news for ${coin}. Recommend manual verification of recent developments.`,
-          source: "Search Error",
-          timestamp: new Date().toISOString(),
-        })
       }
     }
-
-    // If no results found, add a general note
+    // Run all fetches in parallel with timeout
+    const fetches = queries.map(async ({ coin, query, url }) => {
+      const response = await fetchWithTimeout(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; CocoriBot/1.0)" }
+      }, 3000)
+      if (response && response.ok) {
+        const data = await response.json()
+        const sources = [
+          data.AbstractText,
+          data.Answer,
+          data.RelatedTopics?.[0]?.Text,
+          data.Results?.[0]?.Text,
+        ].filter(Boolean)
+        if (sources.length > 0) {
+          return {
+            coin,
+            query,
+            result: sources[0],
+            source: "Web Search",
+            timestamp: new Date().toISOString(),
+          }
+        }
+      }
+      return null
+    })
+    const results = await Promise.all(fetches)
+    for (const res of results) {
+      if (res) searchResults.push(res)
+    }
     if (searchResults.length === 0) {
       searchResults.push({
         coin: "General",
@@ -237,7 +230,6 @@ async function searchCryptoNews(coins: string[]): Promise<any[]> {
         timestamp: new Date().toISOString(),
       })
     }
-
     return searchResults
   } catch (error) {
     console.error("Error in comprehensive web search:", error)
@@ -254,18 +246,49 @@ async function searchCryptoNews(coins: string[]): Promise<any[]> {
   }
 }
 
+// Helper to map CoinData to CryptoData
+function mapCoinDataToCryptoData(coin: any) {
+  return {
+    rank: coin.rank ?? 0,
+    name: coin.name ?? "",
+    symbol: coin.symbol ?? "",
+    coingecko_url: coin.coingecko_url ?? "",
+    price: coin.price ?? 0,
+    market_cap: coin.market_cap ?? 0,
+    twitter_handle: coin.twitter_handle ?? "",
+    twitter_url: coin.twitter_url ?? "",
+    twitter_followers: coin.twitter_followers ?? 0,
+    twitter_first_tweet_date: coin.twitter_first_tweet_date ?? "",
+    github: coin.github ?? "",
+    github_stars: coin.github_stars ?? 0,
+    github_forks: coin.github_forks ?? 0,
+    github_last_updated: coin.github_last_updated ?? "",
+    scraped_at: coin.scraped_at ?? "",
+    coingecko_id: coin.coingecko_id ?? "",
+    price_change_24h: coin.price_change_24h ?? 0,
+    volume_24h: coin.volume_24h ?? 0,
+    last_updated: coin.last_updated ?? "",
+    logo_url: coin.logo_url ?? "",
+    logo_storage_path: coin.logo_storage_path ?? "",
+  }
+}
+
 export async function analyzePortfolioWithAI(
   user: AuthUser,
 ): Promise<{ analysis: PortfolioAnalysis; advice: string; modelUsed: string }> {
   try {
     // Get user's portfolio
     const portfolioItems = await getUserPortfolio(user)
-    const allCoins = await fetchCoins()
+    console.log("Fetched portfolioItems for user", user.id, portfolioItems);
+    const { coins: allCoins } = await fetchCoins()
 
     // Enrich portfolio with current market data
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? calculateBeatScore(coinData) : 0
+      if (!coinData) {
+        console.warn("No coinData found for", item.coingecko_id, item.coin_name);
+      }
+      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
       const priceChange24h = coinData?.price_change_24h || 0
 
@@ -283,6 +306,7 @@ export async function analyzePortfolioWithAI(
         twitterFirstTweet: coinData?.twitter_first_tweet_date,
       }
     })
+    console.log("Enriched portfolio for AI:", enrichedPortfolio);
 
     // Calculate portfolio analysis
     const totalValue = enrichedPortfolio.reduce((sum, item) => sum + (item.totalValue || 0), 0)
@@ -367,6 +391,7 @@ export async function analyzePortfolioWithAI(
       githubLastUpdated: item.githubLastUpdated,
       isInactive: inactiveTeams.some((inactive) => inactive.coin_name === item.coin_name),
     }))
+    console.log("AI Prompt Portfolio Summary:", portfolioSummary);
 
     const systemPrompt = `You are a seasoned financial advisor with deep expertise in cryptocurrency and traditional markets. 
 
@@ -430,12 +455,12 @@ export async function getDetailedPortfolioAnalysis(
   try {
     // Get user's portfolio (same as analyzePortfolioWithAI)
     const portfolioItems = await getUserPortfolio(user)
-    const allCoins = await fetchCoins()
+    const { coins: allCoins } = await fetchCoins()
 
     // Enrich portfolio with current market data
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? calculateBeatScore(coinData) : 0
+      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
       const priceChange24h = coinData?.price_change_24h || 0
 
@@ -630,11 +655,11 @@ export async function chatWithPortfolioBot(
   try {
     // Get current portfolio data for context
     const portfolioItems = await getUserPortfolio(user)
-    const allCoins = await fetchCoins()
+    const { coins: allCoins } = await fetchCoins()
 
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? calculateBeatScore(coinData) : 0
+      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
 
       return {
@@ -651,7 +676,7 @@ export async function chatWithPortfolioBot(
 
     // Build conversation context
     const conversationContext = conversationHistory
-      .slice(-6) // Keep last 6 messages for context
+      .slice(-10) // Keep last 10 messages for context
       .map((msg) => `${msg.role}: ${msg.content}`)
       .join("\n")
 
@@ -669,6 +694,14 @@ Rules:
 - Only actionable, non-obvious advice
 - Use specific numbers from their actual portfolio
 - No generic crypto advice
+- Never refuse to give advice
+- Do not mention supbase, or anything related to how the webapp is built. no useless information
+- Answer only based on the user prompts
+- Use clear, confident language, but avoid jargon without explanation.  
+- When appropriate, Give Performance Analysis (Sharpe ratio)
+- When appropriate, Quote percentages, USD values, and time frames precisely.  
+- When appropriate, cite market context or trends ("Given BTC's 12% rally last month…").
+- If the user's request is ambiguous, ask follow-up questions ("Would you like a tax-optimized rebalance?").
 - Always end with follow-up offer`
 
     const { text, modelUsed } = await generateWithFallback(systemPrompt, message)

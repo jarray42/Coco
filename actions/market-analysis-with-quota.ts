@@ -6,7 +6,7 @@ import type { AuthUser } from "../utils/supabase-auth"
 import { generateText } from "ai"
 import { groq } from "@ai-sdk/groq"
 import { supabase } from "../utils/supabase"
-import { calculateBeatScore } from "../utils/beat-calculator"
+import { getHealthScore } from "../utils/beat-calculator"
 
 interface QuotaError {
   needUpgrade: true
@@ -98,7 +98,7 @@ export async function chatWithMarketBotWithQuota(user: AuthUser, message: string
     // Fetch real coins data from the database
     const { data: coins, error } = await supabase
       .from("coins")
-      .select("*")
+      .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
       .order("market_cap", { ascending: false })
       .limit(10)
 
@@ -116,7 +116,7 @@ export async function chatWithMarketBotWithQuota(user: AuthUser, message: string
         change24h: coin.price_change_24h,
         marketCap: coin.market_cap,
         volume: coin.volume_24h,
-        beatScore: calculateBeatScore(coin),
+        beatScore: getHealthScore(coin),
         githubStars: coin.github_stars,
         twitterFollowers: coin.twitter_followers,
       }))
@@ -129,11 +129,16 @@ Current top coins in CocoriCoin database:
 ${topCoins.map((coin) => `${coin.name} (${coin.symbol}): $${coin.price?.toFixed(4)}, 24h: ${coin.change24h?.toFixed(2)}%, Beat Score: ${coin.beatScore?.toFixed(1)}/100, Market Cap: $${(coin.marketCap || 0).toLocaleString()}`).join("\n")}
 
 Rules:
-- Keep responses under 150 words
+- Keep responses under 100 words
 - Only discuss coins available in the CocoriCoin database
 - Provide actionable insights, not generic advice
-- Use the Beat Score (community engagement + development activity) in your analysis
+- Use the Beat Score (community engagement + development activity) and cocictency score in your analysis
 - Always end by offering to answer follow-up questions
+- Incorporate key technical indicators if you think it is useful:
+  • Moving Averages (e.g., 50/200 SMA crossovers for trend direction).  
+  • RSI (highlight overbought/oversold levels at 70/30).  
+  • MACD (note bullish/bearish crossovers and divergence).  
+  • Bollinger Bands (spot squeezes and breakouts).
 - Be conversational but professional`
 
     console.log("[Market Chat] Generating AI response...")

@@ -4,7 +4,7 @@ import { generateText } from "ai"
 import { groq } from "@ai-sdk/groq"
 import { openai } from "@ai-sdk/openai"
 import { createClient } from "@supabase/supabase-js"
-import { calculateBeatScore, formatPrice } from "../utils/beat-calculator"
+import { formatPrice, getHealthScore } from "../utils/beat-calculator"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -111,7 +111,10 @@ async function generateWithFallback(
 
 // Fetch all coins from Supabase
 async function fetchAllCoins() {
-  const { data: coins, error } = await supabase.from("coins").select("*").order("market_cap", { ascending: false })
+  const { data: coins, error } = await supabase
+    .from("coins")
+    .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
+    .order("market_cap", { ascending: false })
 
   if (error) {
     console.error("Error fetching coins:", error)
@@ -206,8 +209,8 @@ async function performCoinAnalysis() {
       // 6. Recency = 1 / days_since_last_update
       const recency = 1 / daysSinceLastUpdate
 
-      // Calculate beat score
-      const beatScore = calculateBeatScore(coin)
+      // Use pre-calculated health score from database
+      const beatScore = getHealthScore(coin)
 
       return {
         ...coin,

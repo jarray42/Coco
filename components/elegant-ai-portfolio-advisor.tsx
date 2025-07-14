@@ -5,13 +5,14 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Send, Loader2, Shield, Target, MessageCircle, Sparkles, BarChart3, ChevronDown, ChevronUp } from "lucide-react"
+import { Send, Loader2, Shield, Target, MessageCircle, Sparkles, BarChart3, ChevronDown, ChevronUp, Twitter } from "lucide-react"
 import Image from "next/image"
 import { formatPrice } from "../utils/beat-calculator"
 import type { AuthUser } from "../utils/supabase-auth"
-import { useAIWithQuota } from "../hooks/use-ai-with-quota"
+import { chatWithPortfolioBotWithQuota, analyzePortfolioWithQuota, getDetailedPortfolioAnalysisWithQuota } from "../actions/ai-portfolio-advisor-with-quota"
 import { UpgradeModal } from "./upgrade-modal"
 import { CompactQuotaDisplay } from "./compact-quota-display"
+import { getUserQuota } from "../utils/quota-manager"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -24,6 +25,14 @@ interface ElegantAIPortfolioAdvisorProps {
   isDarkMode: boolean
 }
 
+// Add provider options
+const PROVIDER_OPTIONS = [
+  { value: "auto", label: "Best (Auto)" },
+  { value: "groq", label: "Groq" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+]
+
 export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfolioAdvisorProps) {
   const [analysis, setAnalysis] = useState<any>(null)
   const [advice, setAdvice] = useState<string>("")
@@ -33,6 +42,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
   const [chatLoading, setChatLoading] = useState(false)
   const [expandedSection, setExpandedSection] = useState<"none" | "chat" | "analysis">("none")
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const chatInputRef = useRef<HTMLInputElement>(null)
 
   // Add state for detailed analysis
   const [showDetailed, setShowDetailed] = useState(false)
@@ -42,14 +52,11 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
   // State to trigger quota refresh
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
 
-  const {
-    analyzePortfolio,
-    getDetailedAnalysis,
-    chatWithBot,
-    showUpgradeModal,
-    closeUpgradeModal,
-    handleUpgradeSuccess,
-  } = useAIWithQuota(user)
+  const [provider, setProvider] = useState("auto")
+  const [streamingMessage, setStreamingMessage] = useState("")
+  // Local state for chat quota modal
+  const [showChatUpgradeModal, setShowChatUpgradeModal] = useState(false)
+  const [chatQuotaInfo, setChatQuotaInfo] = useState<any>(null)
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -57,43 +64,63 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
 
   useEffect(() => {
     scrollToBottom()
+    // Always focus input after chatMessages change
+    chatInputRef.current?.focus()
   }, [chatMessages])
 
-  // Update the analyze function
+  useEffect(() => {
+    if (!user) return;
+    async function fetchQuota() {
+      const quota = await getUserQuota(user)
+      setChatQuotaInfo(quota)
+    }
+    fetchQuota()
+  }, [quotaRefreshKey, user])
+
+  // Portfolio analysis with quota enforcement
   const handleAnalyzePortfolio = async () => {
     setLoading(true)
     setExpandedSection("analysis")
-    setShowDetailed(false) // Reset to concise view
+    setShowDetailed(false)
     try {
-      const result = await analyzePortfolio()
-      if (result) {
+      const result = await analyzePortfolioWithQuota(user)
+      if (result && 'needUpgrade' in result && result.needUpgrade) {
+        setChatQuotaInfo(result.quota)
+        setShowChatUpgradeModal(true)
+        setLoading(false)
+        return
+      }
+      if (result && !('needUpgrade' in result)) {
         setAnalysis(result.analysis)
         setAdvice(result.advice)
-        setQuotaRefreshKey((prev) => prev + 1) // Trigger quota refresh
-        console.log(`Analysis completed using: ${result.modelUsed}`)
+        setQuotaRefreshKey((prev) => prev + 1)
       }
     } catch (error) {
-      console.error("Error analyzing portfolio:", error)
       setAdvice("Sorry, there was an error analyzing your portfolio. Please try again! 🐓")
     } finally {
       setLoading(false)
     }
   }
 
-  // Add detailed analysis function
+  // Detailed analysis with quota enforcement
   const handleDetailedAnalysis = async () => {
     setLoading(true)
     try {
-      const result = await getDetailedAnalysis()
-      if (result) {
+      const result = await getDetailedPortfolioAnalysisWithQuota(user)
+      if (result && 'needUpgrade' in result && result.needUpgrade) {
+        setChatQuotaInfo(result.quota)
+        setShowChatUpgradeModal(true)
+        setLoading(false)
+        return
+      }
+      if (result && !('needUpgrade' in result)) {
         setDetailedAnalysis(result.analysis)
         setDetailedAdvice(result.advice)
         setShowDetailed(true)
-        setQuotaRefreshKey((prev) => prev + 1) // Trigger quota refresh
-        console.log(`Detailed analysis completed using: ${result.modelUsed}`)
+        setQuotaRefreshKey((prev) => prev + 1)
       }
     } catch (error) {
-      console.error("Error getting detailed analysis:", error)
+      setDetailedAdvice("Sorry, there was an error getting detailed insights. Please try again! 🐓")
     } finally {
       setLoading(false)
     }
@@ -107,6 +134,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
     }
   }
 
+  // Robust chat handler with atomic quota check/increment
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return
 
@@ -119,29 +147,39 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
     setChatMessages((prev) => [...prev, userMessage])
     setChatInput("")
     setChatLoading(true)
+    setStreamingMessage("")
+    setTimeout(() => { chatInputRef.current?.focus(); }, 0)
 
     try {
-      const result = await chatWithBot(chatInput, chatMessages)
-      if (result) {
+      const result = await chatWithPortfolioBotWithQuota(user, chatInput, chatMessages)
+      if (result && 'response' in result && typeof result.response === "string") {
         const botMessage: ChatMessage = {
           role: "assistant",
           content: result.response,
           timestamp: new Date(),
         }
         setChatMessages((prev) => [...prev, botMessage])
-        setQuotaRefreshKey((prev) => prev + 1) // Trigger quota refresh
-        console.log(`Chat response from: ${result.modelUsed}`)
+        setQuotaRefreshKey((prev) => prev + 1)
+      } else if (result && 'needUpgrade' in result && result.needUpgrade) {
+        setChatQuotaInfo(result.quota)
+        setShowChatUpgradeModal(true)
+      } else {
+        setChatMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "Sorry, I'm having trouble right now. Please try again! 🐓",
+          timestamp: new Date(),
+        }])
       }
     } catch (error) {
       console.error("Error in chat:", error)
-      const errorMessage: ChatMessage = {
+      setChatMessages((prev) => [...prev, {
         role: "assistant",
         content: "Sorry, I'm having trouble right now. Please try again! 🐓",
         timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, errorMessage])
+      }])
     } finally {
       setChatLoading(false)
+      setStreamingMessage("")
     }
   }
 
@@ -330,6 +368,21 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
         {expandedSection === "chat" && (
           <div className="p-4 max-h-[600px] overflow-y-auto">
             <div className="space-y-3">
+              {/* Provider Selector */}
+              <div className="flex items-center gap-2 mb-2">
+                <label htmlFor="provider-select" className={`text-xs font-medium ${mutedTextClass}`}>AI Provider:</label>
+                <select
+                  id="provider-select"
+                  value={provider}
+                  onChange={e => setProvider(e.target.value)}
+                  className={`rounded px-2 py-1 text-xs ${isDarkMode ? "bg-slate-700/50 text-slate-100" : "bg-white text-slate-900"}`}
+                >
+                  {PROVIDER_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Chat Messages - Reduced height */}
               <div className={`h-64 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
                 {chatMessages.length === 0 && (
@@ -355,7 +408,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                 {chatMessages.map((message, index) => (
                   <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-[80%] p-4 rounded-2xl shadow-lg ${
+                      className={`max-w-[80%] p-4 rounded-2xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-xl font-semibold ${
                         message.role === "user"
                           ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white"
                           : isDarkMode
@@ -363,8 +416,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                             : "bg-white text-slate-900 border border-slate-200/50"
                       }`}
                     >
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
-                      <div className={`text-xs mt-2 opacity-70`}>{message.timestamp.toLocaleTimeString()}</div>
+                      <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
                     </div>
                   </div>
                 ))}
@@ -382,12 +434,24 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                   </div>
                 )}
 
+                {/* Show streaming message if present */}
+                {streamingMessage && (
+                  <div className="flex justify-start">
+                    <div className={`p-4 rounded-2xl font-sans font-[Inter,system-ui,sans-serif] text-base font-medium ${isDarkMode ? "bg-slate-700/50" : "bg-white border border-slate-200/50"} shadow-lg animate-pulse flex items-center`}>
+                      <div className="whitespace-pre-wrap leading-relaxed">{streamingMessage}
+                        <span className="blinking-cursor-block ml-1">█</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div ref={chatEndRef} />
               </div>
 
               {/* Chat Input */}
               <div className="flex gap-3">
                 <Input
+                  ref={chatInputRef}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyPress={handleKeyPress}
@@ -797,18 +861,49 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                 )}
               </div>
             )}
+
+            {analysis && analysis.length > 0 && (
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                  analysis.length > 260 ? analysis.slice(0, 257) + "..." : analysis
+                )}%20%23CocoriCoin`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1 mt-2 rounded bg-blue-500 text-white hover:bg-blue-600 transition font-semibold shadow-sm"
+                title="Share this analysis on Twitter"
+              >
+                <Twitter className="w-4 h-4" />
+                Tweet this analysis
+              </a>
+            )}
           </div>
         )}
       </div>
 
       {/* Upgrade Modal - Only shows when quota exceeded */}
       <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={closeUpgradeModal}
+        isOpen={showChatUpgradeModal}
+        onClose={() => { setShowChatUpgradeModal(false); setChatQuotaInfo(null); }}
         user={user}
         isDarkMode={isDarkMode}
-        onUpgradeSuccess={handleUpgradeSuccess}
+        onUpgradeSuccess={() => { setShowChatUpgradeModal(false); setChatQuotaInfo(null); }}
       />
     </div>
   )
 }
+
+<style jsx global>{`
+  .blinking-cursor-block {
+    font-weight: bold;
+    font-size: 1.3em;
+    color: #f59e42;
+    opacity: 1;
+    animation: blink-block 0.7s steps(2, start) infinite;
+    vertical-align: middle;
+    margin-left: 2px;
+  }
+  @keyframes blink-block {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+`}</style>

@@ -1,11 +1,11 @@
 "use server"
 
 import { supabase } from "../utils/supabase"
-import { calculateConsistencyScore, type ConsistencyResult } from "../utils/consistency-calculator"
+
 
 // Optimized batch consistency scores with better caching and error handling
-export async function getBatchConsistencyScores(coinIds: string[]): Promise<Record<string, ConsistencyResult>> {
-  const results: Record<string, ConsistencyResult> = {}
+export async function getBatchConsistencyScores(coinIds: string[]): Promise<Record<string, any>> {
+  const results: Record<string, any> = {}
 
   if (!coinIds || coinIds.length === 0) {
     return results
@@ -15,16 +15,14 @@ export async function getBatchConsistencyScores(coinIds: string[]): Promise<Reco
     console.log(`Fetching consistency data for ${coinIds.length} coins`)
     const startTime = Date.now()
 
-    // Single optimized query instead of batches - much faster
-    const { data: historyData, error } = await supabase
-      .from("price_history")
-      .select("coingecko_id, date, github_last_updated, twitter_first_tweet_date")
+    // Fetch pre-calculated consistency scores from the coins table
+    const { data: coinsData, error: coinsError } = await supabase
+      .from("coins")
+      .select("coingecko_id, consistency_score, health_score, twitter_subscore, github_subscore")
       .in("coingecko_id", coinIds)
-      .order("date", { ascending: false })
-      .limit(50 * coinIds.length) // Limit per coin to prevent huge queries
 
-    if (error) {
-      console.error("Error fetching consistency data:", error)
+    if (coinsError) {
+      console.error("Error fetching consistency data from coins table:", coinsError)
       // Return default scores instead of failing completely
       coinIds.forEach((coinId) => {
         results[coinId] = getDefaultConsistencyResult()
@@ -32,35 +30,27 @@ export async function getBatchConsistencyScores(coinIds: string[]): Promise<Reco
       return results
     }
 
-    console.log(`Fetched ${historyData?.length || 0} history records in ${Date.now() - startTime}ms`)
+    console.log(`Fetched ${coinsData?.length || 0} coins with pre-calculated scores in ${Date.now() - startTime}ms`)
 
-    // Group by coin ID efficiently
-    const groupedData: Record<string, any[]> = {}
-    historyData?.forEach((entry) => {
-      if (!groupedData[entry.coingecko_id]) {
-        groupedData[entry.coingecko_id] = []
-      }
-      groupedData[entry.coingecko_id].push(entry)
-    })
-
-    // Calculate consistency scores for each coin
-    const calcStart = Date.now()
+    // Create consistency results from pre-calculated scores
     coinIds.forEach((coinId) => {
-      const coinHistory = groupedData[coinId] || []
-      try {
-        if (coinHistory.length > 0) {
-          results[coinId] = calculateConsistencyScore(coinHistory)
-        } else {
-          results[coinId] = getDefaultConsistencyResult()
+      const coinData = coinsData?.find((coin) => coin.coingecko_id === coinId)
+      if (coinData && coinData.consistency_score !== null && coinData.consistency_score !== undefined) {
+        results[coinId] = {
+          github_frequency: 0, // These would need to be calculated separately if needed
+          twitter_frequency: 0,
+          github_recency: 0,
+          twitter_recency: 0,
+          github_score: coinData.github_subscore || 0,
+          twitter_score: coinData.twitter_subscore || 0,
+          consistency_score: coinData.consistency_score,
         }
-      } catch (error) {
-        console.error(`Error calculating consistency for ${coinId}:`, error)
+      } else {
         results[coinId] = getDefaultConsistencyResult()
       }
     })
 
-    console.log(`Calculated ${coinIds.length} consistency scores in ${Date.now() - calcStart}ms`)
-    console.log(`Total consistency processing time: ${Date.now() - startTime}ms`)
+    console.log(`Processed ${coinIds.length} consistency scores in ${Date.now() - startTime}ms`)
 
     return results
   } catch (error) {
@@ -74,7 +64,7 @@ export async function getBatchConsistencyScores(coinIds: string[]): Promise<Reco
 }
 
 // Helper function for default consistency result
-function getDefaultConsistencyResult(): ConsistencyResult {
+function getDefaultConsistencyResult(): any {
   return {
     github_frequency: 0,
     twitter_frequency: 0,
@@ -87,7 +77,7 @@ function getDefaultConsistencyResult(): ConsistencyResult {
 }
 
 // Single coin consistency score (optimized)
-export async function getConsistencyScore(coinId: string): Promise<ConsistencyResult | null> {
+export async function getConsistencyScore(coinId: string): Promise<any | null> {
   const results = await getBatchConsistencyScores([coinId])
   return results[coinId] || null
 }

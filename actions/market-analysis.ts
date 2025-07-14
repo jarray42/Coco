@@ -3,7 +3,7 @@
 import { generateText } from "ai"
 import { groq } from "@ai-sdk/groq"
 import { createClient } from "@supabase/supabase-js"
-import { formatPrice, calculateBeatScore } from "../utils/beat-calculator"
+import { formatPrice, getHealthScore } from "../utils/beat-calculator"
 import { openai } from "@ai-sdk/openai"
 
 export interface MarketAnalysisResult {
@@ -161,7 +161,10 @@ function minMaxNormalize(values: number[]): number[] {
 }
 
 async function fetchAllCoins() {
-  const { data: coins, error } = await supabase.from("coins").select("*").order("market_cap", { ascending: false })
+  const { data: coins, error } = await supabase
+    .from("coins")
+    .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
+    .order("market_cap", { ascending: false })
     if (error) {
     console.error("Error fetching coins:", error)
     return []
@@ -190,7 +193,7 @@ async function performCoinAnalysis(): Promise<{
       const marketCap = coin.market_cap || 0
       const undervaluation = marketCap > 0 ? (1 / marketCap) * 1e12 : 0
       const recency = 1 / daysSinceLastUpdate
-      const beatScore = calculateBeatScore(coin)
+      const beatScore = getHealthScore(coin)
       return {
         ...coin,
         daysSinceFirstTweet,
@@ -370,7 +373,6 @@ export async function analyzeMarket(
     const bullishCoins = enrichedCoins.filter((coin: any) => (coin.price_change_24h || 0) > 0).length
     const bullishPercentage = (bullishCoins / enrichedCoins.length) * 100
 
-    // Compose the AI prompt as in market_analysis0.ts
     // Format risk indicators for prompt
     const riskSummary = riskIndicators
       .slice(0, detailed ? riskIndicators.length : 2)
@@ -385,13 +387,15 @@ export async function analyzeMarket(
       )
       .join("\n")
 
-    const systemPrompt = detailed
-      ? `You are a seasoned financial advisor with deep expertise in cryptocurrency and traditional markets.
+    const systemPrompt = `You are a seasoned financial advisor with deep expertise in cryptocurrency and traditional markets. 
 
 When analyzing the market, you must ONLY mention coins from the provided list - do not reference any other cryptocurrencies.
 
-RESPONSE FORMAT (DETAILED):
+RESPONSE FORMAT (${detailed ? "DETAILED" : "CONCISE"}):
 
+${
+  detailed
+    ? `
 MARKET SENTIMENT: [Brief sentiment analysis - Bullish/Bearish/Neutral with percentage]
 
 TOP PERFORMERS & MOVERS:
@@ -422,19 +426,26 @@ STRATEGIC RECOMMENDATIONS:
 • [Risk management suggestion]
 • [Opportunity timing advice]
 `
-      : `You are a cryptocurrency market analyst. Provide a concise market analysis based on current data.
+    : `
+MARKET SENTIMENT: [Bullish/Bearish/Neutral with ${bullishPercentage.toFixed(1)}% coins positive]
 
-Structure your response with these sections:
-## Market Pulse
-## Key Insights
-## Actionable Takeaway
+TOP 3 INSIGHTS:
+• [Top performer: coin name +X% - reason in 8 words max]
+• [Healthiest project: coin name - key metric in 8 words max]  
+• [Low-cap gem: coin name - opportunity in 8 words max]
 
-Focus on:
-- Overall market sentiment
-- Top 3 most significant trends
-- One clear actionable recommendation
+RISK INDICATORS:
+[Top 2 most critical risks only: ${riskSummary || "No major risks detected"}]
 
-Be concise but insightful.`
+MIGRATION & DELISTING ALERTS:
+[One line: specific alert with coin name, or "No potential migration or delisting detected"]
+
+ACTION SUGGESTED:
+[One action with verb + concrete numbers, or "Monitor current positions - no immediate action needed"]
+`
+}
+
+Use concrete percentages, market caps, and metrics. Keep language professional and elegant. No markdown formatting.`
 
     const userPrompt = `Analyze this market data (${detailed ? "provide detailed insights" : "be extremely concise"}):
 

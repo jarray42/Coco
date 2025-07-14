@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +45,8 @@ export function MarketAIAdvisor({ className }: MarketAIAdvisorProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState("")
   const [chatLoading, setChatLoading] = useState(false)
+  const [streamingMessage, setStreamingMessage] = useState("")
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const handleAnalyze = async (analysisType: "basic" | "detailed" = "basic") => {
     if (!user) {
@@ -89,34 +91,46 @@ export function MarketAIAdvisor({ className }: MarketAIAdvisorProps) {
     setChatMessages((prev) => [...prev, userMessage])
     setChatInput("")
     setChatLoading(true)
+    setStreamingMessage("")
 
     try {
-      const result = await chatWithMarketBotWithQuota(user as AuthUser, chatInput)
-
-      if ("needUpgrade" in result) {
-        const errorMessage: ChatMessage = {
-          role: "assistant",
-          content: result.message,
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, errorMessage])
-      } else {
-        const assistantMessage: ChatMessage = {
-          role: "assistant",
-          content: result.response,
-          timestamp: new Date(),
-        }
-        setChatMessages((prev) => [...prev, assistantMessage])
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: chatInput,
+          chatHistory: chatMessages,
+          provider: "auto",
+        }),
+      })
+      if (!response.body) throw new Error("No response body")
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let result = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value)
+        result += chunk
+        setStreamingMessage(result)
       }
-    } catch (err) {
+      // Add the streamed message to chat history
+      const botMessage: ChatMessage = {
+        role: "assistant",
+        content: result,
+        timestamp: new Date(),
+      }
+      setChatMessages((prev) => [...prev, botMessage])
+    } catch (error) {
       const errorMessage: ChatMessage = {
         role: "assistant",
-        content: "Sorry, I'm having trouble right now. Please try again later! 🐓",
+        content: "Sorry, I'm having trouble right now. Please try again! 🐓",
         timestamp: new Date(),
       }
       setChatMessages((prev) => [...prev, errorMessage])
     } finally {
       setChatLoading(false)
+      setStreamingMessage("")
     }
   }
 
@@ -156,6 +170,10 @@ export function MarketAIAdvisor({ className }: MarketAIAdvisorProps) {
     }
     return sections
   }
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [chatMessages, streamingMessage])
 
   return (
     <Card className={className}>
@@ -308,6 +326,15 @@ export function MarketAIAdvisor({ className }: MarketAIAdvisorProps) {
                     </div>
                   </div>
                 )}
+                {/* Show streaming message if present */}
+                {streamingMessage && (
+                  <div className="flex justify-start">
+                    <div className="bg-muted rounded-lg px-3 py-2 animate-pulse">
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed">{streamingMessage}</div>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
               </div>
             </ScrollArea>
 

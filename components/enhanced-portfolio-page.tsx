@@ -5,19 +5,24 @@ import { ModernDeFiBackground } from "./modern-defi-background"
 import { SiteHeader } from "./site-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Sun, Moon, ArrowLeft, Edit3, Save, X, TrendingUp, Trash2, Star, Users, ArrowUpDown } from "lucide-react"
+import { Sun, Moon, ArrowLeft, Edit3, Save, X, TrendingUp, Trash2, Star, Users, ArrowUpDown, Wallet } from "lucide-react"
 import { getCurrentUser, type AuthUser } from "../utils/supabase-auth"
-import { getUserPortfolio, updatePortfolioAmount, removeFromPortfolio, type PortfolioItem } from "../utils/portfolio"
-import { getAllCoinsData } from "../actions/fetch-all-coins"
-import { calculateBeatScore, formatPrice, formatNumber, type CryptoData } from "../utils/beat-calculator"
+import { getUserPortfolio, updatePortfolioItem, removeFromPortfolio, type PortfolioItem } from "../utils/portfolio"
+import { formatPrice, formatNumber, type CryptoData, getHealthScore } from "../utils/beat-calculator"
 import { ElegantPixelatedHeart } from "./elegant-pixelated-heart"
 import { UserMenu } from "./user-menu"
+import { NotificationBell } from "./notification-bell"
+import { AnimatedNotificationList } from "./animated-notification-list"
 import { ElegantAIPortfolioAdvisor } from "./elegant-ai-portfolio-advisor"
 import Link from "next/link"
 import Image from "next/image"
+import { getUserQuota } from "../utils/quota-manager"
+import { PortfolioWalletIcon } from "./portfolio-wallet-icon"
+import { ConsistencyScoreDisplay } from "./consistency-score-display"
+import { supabase } from "../utils/supabase"
 
 interface PortfolioItemWithData extends PortfolioItem {
-  coinData?: CryptoData
+  coinData?: CryptoData & { consistencyScore?: number; consistencyDetails?: any }
   beatScore?: number
   totalValue?: number
 }
@@ -33,10 +38,19 @@ export function EnhancedPortfolioPage() {
   const [editAmount, setEditAmount] = useState("")
   const [sortBy, setSortBy] = useState<PortfolioSortOption>("totalValue")
   const [ascending, setAscending] = useState(false)
+  const [eggs, setEggs] = useState<number | null>(null)
 
   useEffect(() => {
     loadUserAndPortfolio()
   }, [])
+
+  useEffect(() => {
+    if (user) {
+      getUserQuota(user).then((quota) => {
+        if (quota && typeof quota.eggs === "number") setEggs(quota.eggs)
+      })
+    }
+  }, [user])
 
   const loadUserAndPortfolio = async () => {
     try {
@@ -49,18 +63,28 @@ export function EnhancedPortfolioPage() {
         const portfolioItems = await getUserPortfolio(user as AuthUser)
         console.log("Portfolio items:", portfolioItems)
 
-        const allCoins = await getAllCoinsData()
+        const coingeckoIds = portfolioItems.map((item) => item.coingecko_id)
+        const allCoins = await supabase
+          .from("coins")
+          .select("*")
+          .in("coingecko_id", coingeckoIds)
+          .then((res) => res.data as CryptoData[])
+
         console.log("All coins loaded:", allCoins.length)
 
-        // Enrich portfolio items with coin data
+        // Enrich portfolio items with coin data and pre-calculated scores
         const enrichedPortfolio = portfolioItems.map((item) => {
           const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-          const beatScore = coinData ? calculateBeatScore(coinData) : 0
+          const beatScore = coinData ? getHealthScore(coinData) : 0
+          const consistencyScore = coinData ? (coinData.consistency_score || 50) : 0
           const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
-
+          // Use pre-calculated consistency score from coin data
+          const coinDataWithConsistency = coinData
+            ? { ...coinData, consistencyScore: consistencyScore, consistencyDetails: null }
+            : undefined
           return {
             ...item,
-            coinData,
+            coinData: coinDataWithConsistency,
             beatScore,
             totalValue,
           }
@@ -85,7 +109,7 @@ export function EnhancedPortfolioPage() {
     if (!user) return
 
     const amount = Number.parseFloat(editAmount) || 0
-    const result = await updatePortfolioAmount(user, coinId, amount)
+    const result = await updatePortfolioItem(user, coinId, amount)
 
     if (result.success) {
       setPortfolio((prev) =>
@@ -287,7 +311,10 @@ export function EnhancedPortfolioPage() {
               {isDarkMode ? "Light" : "Dark"}
             </Button>
 
-            <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+            <div className="flex items-center gap-3">
+              <NotificationBell user={user} isDarkMode={isDarkMode} />
+              <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+            </div>
           </div>
         </div>
 
@@ -307,33 +334,30 @@ export function EnhancedPortfolioPage() {
             </h1>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <div className={`text-xs font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                Total Value
-              </div>
-              <div className={`text-xl font-bold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
-                {totalPortfolioValue > 0 ? formatPrice(totalPortfolioValue) : "$0.00"}
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-center mb-8">
+            {/* Portfolio Icon and Title */}
+            <div className="flex items-center gap-4">
+              <Wallet className={`w-8 h-8 ${isDarkMode ? "text-yellow-400" : "text-yellow-600"}`} />
+              <h1 className={`text-3xl font-bold ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>My Portfolio</h1>
             </div>
+            {/* Total Value */}
             <div>
-              <div className={`text-xs font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                Total Coins
-              </div>
-              <div className={`text-xl font-bold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
-                {portfolio.length}
-              </div>
+              <div className={`text-sm font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>Total Value</div>
+              <div className={`text-2xl font-bold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>{formatPrice(totalPortfolioValue)}</div>
             </div>
+            {/* Avg Health Score */}
             <div>
-              <div className={`text-xs font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                Avg Health Score
-              </div>
-              <div className={`text-xl font-bold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
-                {portfolio.length > 0
-                  ? Math.round(portfolio.reduce((sum, item) => sum + (item.beatScore || 0), 0) / portfolio.length)
-                  : 0}
-                /100
-              </div>
+              <div className={`text-sm font-medium ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>Avg Health Score</div>
+              <div className={`text-2xl font-bold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>{portfolio.length > 0 ? Math.round(portfolio.reduce((sum, item) => sum + (item.beatScore || 0), 0) / portfolio.length) : 0}/100</div>
+            </div>
+            {/* Eggs Badge */}
+            <div className="flex justify-end">
+              {eggs !== null && (
+                <span className={`px-4 py-1 rounded-full text-lg font-semibold flex items-center gap-2 shadow border border-yellow-300 bg-gradient-to-r from-yellow-200 to-yellow-400 ${isDarkMode ? "text-yellow-200" : "text-yellow-900"}`}>
+                  <span role="img" aria-label="egg" className="text-xl">🥚</span>
+                  {eggs} Eggs
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -466,6 +490,10 @@ export function EnhancedPortfolioPage() {
                 <span>Health Score</span>
                 {getSortTriangle("healthScore")}
               </Button>
+
+              <div className="flex-shrink-0 w-32 flex items-center justify-center">
+                <span>Consistency</span>
+              </div>
 
               <div className="flex-shrink-0 w-20 flex items-center justify-center">
                 <span>Actions</span>
@@ -653,6 +681,13 @@ export function EnhancedPortfolioPage() {
                       <ElegantPixelatedHeart score={item.beatScore || 0} isDarkMode={isDarkMode} size="sm" />
                     </div>
 
+                    {/* Consistency Score */}
+                    <div className="flex-shrink-0 w-32 flex items-center justify-center">
+                      {typeof item.coinData?.consistencyScore === "number" && (
+                        <ConsistencyScoreDisplay score={item.coinData.consistencyScore} details={item.coinData.consistencyDetails} isDarkMode={isDarkMode} size="sm" />
+                      )}
+                    </div>
+
                     {/* Actions */}
                     <div className="flex-shrink-0 w-20 flex justify-end">
                       <Button
@@ -675,6 +710,9 @@ export function EnhancedPortfolioPage() {
           </div>
         )}
       </div>
+
+      {/* Animated Notification List */}
+      {user && <AnimatedNotificationList user={user} isDarkMode={isDarkMode} />}
     </div>
   )
 }

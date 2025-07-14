@@ -139,7 +139,7 @@ export function EnhancedTableHeader({ sortBy, ascending, onSort, isDarkMode, use
 
       {user && (
         <div className={`flex-shrink-0 w-16 flex items-center justify-center ${headerClass}`}>
-          <span>Portfolio</span>
+          <span>Actions</span>
         </div>
       )}
     </div>

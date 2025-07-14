@@ -101,8 +101,8 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
           <div
             className={`p-2 rounded-xl ${isDarkMode ? "bg-gradient-to-r from-purple-500/20 to-blue-500/20" : "bg-gradient-to-r from-purple-100 to-blue-100"}`}
           >
@@ -128,7 +128,7 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
         </button>
       </div>
 
-      {/* Analysis Sections */}
+            {/* Analysis Sections */}
       <div className="grid gap-4">
         {sections.map((section, index) => (
           <div
@@ -136,10 +136,10 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
             className={`rounded-2xl ${cardClass} border backdrop-blur-md p-6 transition-all duration-300 hover:shadow-lg`}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div
+                <div
                 className={`p-2 rounded-lg ${
                   section.title.includes("SENTIMENT")
-                    ? isDarkMode
+                      ? isDarkMode
                       ? "bg-blue-500/20"
                       : "bg-blue-100"
                     : section.title.includes("RISK")
@@ -196,14 +196,14 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
                       }`}
                     >
                       {itemIndex + 1}
-                    </div>
+                        </div>
                     <p className={`${textClass} text-xs leading-snug flex-1 font-medium opacity-90`}>{item}</p>
                   </div>
                 ))}
-              </div>
+                </div>
             )}
-          </div>
-        ))}
+              </div>
+            ))}
       </div>
 
       {/* Risk Indicators Section */}
@@ -219,12 +219,12 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
               </h3>
               <p className={`text-sm ${mutedTextClass}`}>{riskIndicators.length} risk categories identified</p>
             </div>
-          </div>
+                  </div>
 
           <div className="space-y-4">
-            {riskIndicators.map((risk, index) => (
-              <div
-                key={index}
+                    {riskIndicators.map((risk, index) => (
+                      <div
+                        key={index}
                 className={`border rounded-xl overflow-hidden transition-all duration-300 ${
                   isDarkMode ? "border-slate-700/50" : "border-slate-200"
                 }`}
@@ -238,9 +238,9 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
                       : isDarkMode
                         ? "hover:bg-slate-700/30"
                         : "hover:bg-slate-50/50"
-                  }`}
+                        }`}
                   onClick={() => setExpandedRisk(expandedRisk === risk.type ? null : risk.type)}
-                >
+                      >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <RiskBadge type={risk.type} isDarkMode={isDarkMode} />

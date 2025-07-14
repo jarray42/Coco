@@ -6,7 +6,7 @@ import { EnhancedTableHeader } from "./components/enhanced-table-header"
 import { Pagination } from "./components/pagination"
 import { ElegantScrollBar } from "./components/elegant-scroll-bar"
 import type { CryptoData, SortOption } from "./utils/beat-calculator"
-import { calculateBeatScore } from "./utils/beat-calculator"
+import { getHealthScore } from "./utils/beat-calculator"
 import { Input } from "@/components/ui/input"
 import { Search, RefreshCw, Sun, Moon, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,14 +17,18 @@ import { ModernDeFiBackground } from "./components/modern-defi-background"
 import { getCurrentUser, onAuthStateChange, type AuthUser } from "./utils/supabase-auth"
 import { AuthModal } from "./components/auth-modal"
 import { UserMenu } from "./components/user-menu"
+import { NotificationBell } from "./components/notification-bell"
+import { AnimatedNotificationList } from "./components/animated-notification-list"
 import { ElegantCocoriAIWidget } from "./components/elegant-cocori-ai-widget"
 import { Badge } from "@/components/ui/badge"
 import { ElegantFooter } from "./components/elegant-footer"
-import { getBatchConsistencyScores } from "./actions/fetch-consistency-data"
-import type { ConsistencyResult } from "./utils/consistency-calculator"
 import { useDebounce } from "./hooks/use-debounce"
+import React from "react"
 
-const ITEMS_PER_PAGE = 100
+// Memoized version of CompactCoinRow for better performance
+const MemoizedCompactCoinRow = React.memo(CompactCoinRow)
+
+const ITEMS_PER_PAGE = 50
 
 export default function CoinBeatDashboard() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -36,7 +40,6 @@ export default function CoinBeatDashboard() {
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [pageLoading, setPageLoading] = useState(false)
-  const [consistencyLoading, setConsistencyLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [totalCount, setTotalCount] = useState(0)
@@ -46,7 +49,6 @@ export default function CoinBeatDashboard() {
   // Cache for loaded pages with longer duration
   const [pageCache, setPageCache] = useState<Record<number, CryptoData[]>>({})
   const [pageCacheTimestamp, setPageCacheTimestamp] = useState<Record<number, number>>({})
-  const [consistencyCache, setConsistencyCache] = useState<Record<string, ConsistencyResult>>({})
 
   // AI Widget expansion state
   const [isAIExpanded, setIsAIExpanded] = useState(false)
@@ -54,6 +56,23 @@ export default function CoinBeatDashboard() {
 
   // Pre-calculate beat scores for better performance
   const [beatScores, setBeatScores] = useState<Record<string, number>>({})
+
+  // Batch load user-specific data for better performance
+  const [portfolioStatus, setPortfolioStatus] = useState<Record<string, boolean>>({})
+  const [alertStatus, setAlertStatus] = useState<Record<string, boolean>>({})
+  const [stakeStatus, setStakeStatus] = useState<Record<string, boolean>>({})
+  const [verifiedAlertsStatus, setVerifiedAlertsStatus] = useState<Record<string, string[]>>({})
+  const [userDataLoading, setUserDataLoading] = useState(false)
+  const [userDataLoadedForCryptoData, setUserDataLoadedForCryptoData] = useState<string>("")
+
+  // Memoized user data to prevent unnecessary re-renders
+  const memoizedPortfolioStatus = useMemo(() => portfolioStatus, [JSON.stringify(portfolioStatus)])
+  const memoizedAlertStatus = useMemo(() => alertStatus, [JSON.stringify(alertStatus)])
+  
+  // Track if user data has been loaded to prevent showing neutral states
+  const userDataLoaded = useMemo(() => {
+    return userDataLoadedForCryptoData !== "" && cryptoData.length > 0 && !userDataLoading
+  }, [userDataLoadedForCryptoData, cryptoData.length, userDataLoading])
 
   // Debounced search for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300)
@@ -84,8 +103,8 @@ export default function CoinBeatDashboard() {
           bValue = b.name.toLowerCase()
           return ascending ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
         case "healthScore":
-          aValue = beatScores[a.coingecko_id] || 0
-          bValue = beatScores[b.coingecko_id] || 0
+          aValue = beatScores[a.coingecko_id] || getHealthScore(a)
+          bValue = beatScores[b.coingecko_id] || getHealthScore(b)
           break
         case "price":
           aValue = a.price || 0
@@ -108,8 +127,8 @@ export default function CoinBeatDashboard() {
           bValue = b.volume_24h || 0
           break
         case "consistencyScore":
-          aValue = consistencyCache[a.coingecko_id]?.consistency_score || 0
-          bValue = consistencyCache[b.coingecko_id]?.consistency_score || 0
+          aValue = a.consistency_score || 50
+          bValue = b.consistency_score || 50
           break
         default:
           return 0
@@ -121,7 +140,7 @@ export default function CoinBeatDashboard() {
 
       return 0
     })
-  }, [cryptoData, debouncedSearchTerm, sortBy, ascending, beatScores, consistencyCache])
+  }, [cryptoData, debouncedSearchTerm, sortBy, ascending, beatScores])
 
   // Measure dashboard width for AI widget
   useEffect(() => {
@@ -174,24 +193,8 @@ export default function CoinBeatDashboard() {
         setLastUpdated(new Date())
         setError(null)
 
-        // Load consistency scores in parallel (non-blocking)
-        if (coins.length > 0) {
-          setConsistencyLoading(true)
-          const coinIds = coins.map((coin) => coin.coingecko_id)
-
-          // Load consistency scores in background
-          getBatchConsistencyScores(coinIds)
-            .then((scores) => {
-              setConsistencyCache((prev) => ({ ...prev, ...scores }))
-              console.log(`Loaded consistency scores for ${Object.keys(scores).length} coins`)
-            })
-            .catch((error) => {
-              console.error("Failed to load consistency scores:", error)
-            })
-            .finally(() => {
-              setConsistencyLoading(false)
-            })
-        }
+        // Consistency scores are already included in the main coin data fetch
+        // No need for separate loading since we have pre-calculated scores in the database
 
         // Prefetch next page
         const newTotalPages = Math.ceil(count / ITEMS_PER_PAGE)
@@ -212,6 +215,124 @@ export default function CoinBeatDashboard() {
     [pageCache, pageCacheTimestamp],
   )
 
+  // Batch load user-specific data for better performance
+  const loadUserData = useCallback(async () => {
+    if (!user || cryptoData.length === 0) return
+
+    // Prevent multiple simultaneous calls
+    if (userDataLoading) return
+
+    // Create a hash of the current crypto data to track if we've already loaded for this data
+    const cryptoDataHash = cryptoData.map(c => c.coingecko_id).join(',')
+    
+    // Check if we already have data for this user and crypto set
+    if (userDataLoadedForCryptoData === cryptoDataHash) {
+      console.log('User data already loaded for this crypto set, skipping reload')
+      return
+    }
+
+    // Check if we have cached data that's still fresh (30 minutes instead of 5)
+    const cacheKey = `user_data_${user.id}_${cryptoDataHash}`
+    const cachedData = sessionStorage.getItem(cacheKey)
+    if (cachedData) {
+      try {
+        const { data, timestamp } = JSON.parse(cachedData)
+        const now = Date.now()
+        const CACHE_DURATION = 30 * 60 * 1000 // 30 minutes (increased from 5)
+        
+        if (now - timestamp < CACHE_DURATION) {
+          console.log('Using cached user data')
+          setPortfolioStatus(data.portfolio || {})
+          setAlertStatus(data.alerts || {})
+          setStakeStatus(data.stake || {})
+          setVerifiedAlertsStatus(data.verifiedAlerts || {})
+          setUserDataLoadedForCryptoData(cryptoDataHash)
+          return
+        }
+      } catch (error) {
+        console.log('Invalid cached data, will reload')
+      }
+    }
+
+    setUserDataLoading(true)
+    try {
+      console.log('Loading user data for', cryptoData.length, 'coins')
+      
+      // Single API call to get all user data (portfolio, alerts, and staking)
+      const response = await fetch('/api/user-data-batch', {
+        headers: { 
+          'Authorization': `Bearer ${user.id}`
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Set all the data from the single API call
+        setPortfolioStatus(data.portfolio.map || {})
+        setAlertStatus(data.alerts.map || {})
+        setStakeStatus(data.staked.map || {})
+        setVerifiedAlertsStatus(data.verifiedAlerts.map || {})
+
+        // Cache the data with longer duration
+        const cacheData = {
+          portfolio: data.portfolio.map || {},
+          alerts: data.alerts.map || {},
+          stake: data.staked.map || {},
+          verifiedAlerts: data.verifiedAlerts.map || {},
+          timestamp: Date.now()
+        }
+        sessionStorage.setItem(cacheKey, JSON.stringify({ data: cacheData, timestamp: Date.now() }))
+
+        // Mark that we've loaded data for this crypto data set
+        setUserDataLoadedForCryptoData(cryptoDataHash)
+        
+        console.log('User data loaded and cached:', {
+          portfolio: data.portfolio.count,
+          alerts: data.alerts.count,
+          staked: data.staked.count,
+          verifiedAlerts: data.verifiedAlerts.count
+        })
+      } else {
+        console.error('Failed to load user data:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Failed to load user data:', error)
+    } finally {
+      setUserDataLoading(false)
+    }
+  }, [user, cryptoData, userDataLoading, userDataLoadedForCryptoData])
+
+  // Function to invalidate user data cache when user makes changes
+  const invalidateUserDataCache = useCallback(() => {
+    if (!user) return
+    
+    // Clear the cache for this user
+    const keysToRemove: string[] = []
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i)
+      if (key && key.startsWith(`user_data_${user.id}_`)) {
+        keysToRemove.push(key)
+      }
+    }
+    
+    keysToRemove.forEach(key => sessionStorage.removeItem(key))
+    
+    // Reset the loaded state to force reload
+    setUserDataLoadedForCryptoData("")
+    setPortfolioStatus({})
+    setAlertStatus({})
+    setStakeStatus({})
+    setVerifiedAlertsStatus({})
+    
+    console.log('User data cache invalidated')
+  }, [user])
+
+  // Expose the invalidate function to child components
+  const userDataContext = useMemo(() => ({
+    invalidateCache: invalidateUserDataCache
+  }), [invalidateUserDataCache])
+
   const isInitialRender = useRef(true)
 
   // Initial load
@@ -231,25 +352,50 @@ export default function CoinBeatDashboard() {
     loadPageData(currentPage)
   }, [currentPage, loadPageData])
 
-  // Calculate beat scores once data is loaded with memoization
+  // Calculate beat scores once data is loaded with memoization - OPTIMIZED
   useEffect(() => {
     if (cryptoData.length > 0) {
-      const scores: Record<string, number> = {}
-      cryptoData.forEach((coin) => {
-        scores[coin.coingecko_id] = calculateBeatScore(coin)
-      })
-      setBeatScores(scores)
+      // Use setTimeout to defer calculation and prevent UI blocking
+      const calculateScores = () => {
+        const scores: Record<string, number> = {}
+        cryptoData.forEach((coin) => {
+          scores[coin.coingecko_id] = getHealthScore(coin)
+        })
+        setBeatScores(scores)
+      }
+
+      // Defer calculation to prevent blocking coin navigation
+      setTimeout(calculateScores, 0)
     }
   }, [cryptoData])
+
+  // Load user-specific data when user or crypto data changes - OPTIMIZED
+  useEffect(() => {
+    if (user && cryptoData.length > 0 && !userDataLoading) {
+      // Create a hash of the current crypto data
+      const cryptoDataHash = cryptoData.map(c => c.coingecko_id).join(',')
+      
+      // Only load if we haven't loaded for this exact crypto data set
+      if (userDataLoadedForCryptoData !== cryptoDataHash) {
+        console.log('Crypto data changed, loading user data')
+        // Load user data immediately to prevent visual reloads
+        loadUserData()
+      } else {
+        console.log('Crypto data unchanged, skipping user data reload')
+      }
+    }
+  }, [user, cryptoData, loadUserData, userDataLoading, userDataLoadedForCryptoData])
 
   // Memoized user authentication
   useEffect(() => {
     let isCancelled = false
+    let previousUserId: string | null = null
 
     // Get initial user
     getCurrentUser().then(({ user }) => {
       if (!isCancelled) {
         setUser(user as AuthUser | null)
+        previousUserId = user?.id || null
       }
     })
 
@@ -258,14 +404,19 @@ export default function CoinBeatDashboard() {
       data: { subscription },
     } = onAuthStateChange((user) => {
       if (!isCancelled) {
-        setUser(user)
-
-        // Scroll to top when user logs in
-        if (user) {
-          setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: "smooth" })
-          }, 100)
+        const currentUserId = user?.id || null
+        
+        // Only clear cache if the user actually changed (login/logout)
+        if (previousUserId !== currentUserId) {
+          console.log('User changed, clearing cache')
+          setPortfolioStatus({})
+          setAlertStatus({})
+          setStakeStatus({})
+          setUserDataLoadedForCryptoData("")
+          previousUserId = currentUserId
         }
+        
+        setUser(user)
       }
     })
 
@@ -300,18 +451,8 @@ export default function CoinBeatDashboard() {
       return newTimestamp
     })
 
-    // Clear consistency cache for current page coins
-    const currentCoinIds = cryptoData.map((coin) => coin.coingecko_id)
-    setConsistencyCache((prev) => {
-      const newCache = { ...prev }
-      currentCoinIds.forEach((coinId) => {
-        delete newCache[coinId]
-      })
-      return newCache
-    })
-
     await loadPageData(currentPage, true)
-  }, [currentPage, loadPageData, cryptoData])
+  }, [currentPage, loadPageData])
 
   const handleAuthSuccess = useCallback(() => {
     // Refresh user data after successful auth
@@ -357,6 +498,9 @@ export default function CoinBeatDashboard() {
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
 
+  const [expandedAlertCoinId, setExpandedAlertCoinId] = useState<string | null>(null)
+  const [expandedNotificationCoinId, setExpandedNotificationCoinId] = useState<string | null>(null)
+
   return (
     <div className={`min-h-screen transition-all duration-1000 ${isDarkMode ? "dark" : ""}`}>
       <ModernDeFiBackground isDarkMode={isDarkMode} />
@@ -397,7 +541,10 @@ export default function CoinBeatDashboard() {
 
             {/* Authentication */}
             {user ? (
-              <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+              <div className="flex items-center gap-3">
+                <NotificationBell user={user} isDarkMode={isDarkMode} />
+                <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+              </div>
             ) : (
               <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
             )}
@@ -480,22 +627,8 @@ export default function CoinBeatDashboard() {
           </div>
         )}
 
-        {/* Consistency Loading Indicator */}
-        {consistencyLoading && (
-          <div
-            className={`p-3 mb-4 rounded-lg border ${
-              isDarkMode ? "bg-blue-900/20 border-blue-700 text-blue-300" : "bg-blue-50 border-blue-200 text-blue-700"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Loading consistency scores...
-            </div>
-          </div>
-        )}
-
         {/* Elegant Top Scroll Bar */}
-        <ElegantScrollBar targetRef={tableRef} isDarkMode={isDarkMode} />
+        <ElegantScrollBar targetRef={tableRef as React.RefObject<HTMLElement>} isDarkMode={isDarkMode} />
 
         {/* Table */}
         <div className={`transition-all duration-600 ease-out ${isAIExpanded ? "transform translate-y-0" : ""}`}>
@@ -558,15 +691,23 @@ export default function CoinBeatDashboard() {
                         </div>
                       )}
                       {sortedData.map((coin, index) => (
-                        <CompactCoinRow
+                        <MemoizedCompactCoinRow
                           key={coin.coingecko_id}
                           data={coin}
                           index={index}
                           isDarkMode={isDarkMode}
                           beatScore={beatScores[coin.coingecko_id] || 0}
-                          consistencyScore={consistencyCache[coin.coingecko_id]?.consistency_score}
-                          consistencyDetails={consistencyCache[coin.coingecko_id]}
+                          consistencyScore={coin.consistency_score || 0}
+                          consistencyDetails={undefined}
                           user={user}
+                          expandedAlert={expandedAlertCoinId === coin.coingecko_id}
+                          onExpandAlert={() => setExpandedAlertCoinId(expandedAlertCoinId === coin.coingecko_id ? null : coin.coingecko_id)}
+                          expandedNotification={expandedNotificationCoinId === coin.coingecko_id}
+                          onExpandNotification={() => setExpandedNotificationCoinId(expandedNotificationCoinId === coin.coingecko_id ? null : coin.coingecko_id)}
+                          inPortfolio={userDataLoaded ? (memoizedPortfolioStatus[coin.coingecko_id] || false) : undefined}
+                          hasAlerts={userDataLoaded ? (memoizedAlertStatus[coin.coingecko_id] || false) : undefined}
+                          hasStaked={userDataLoaded ? (stakeStatus[coin.coingecko_id] || false) : undefined}
+                          batchVerifiedAlerts={userDataLoaded ? (verifiedAlertsStatus[coin.coingecko_id] || []) : undefined}
                         />
                       ))}
                     </div>
@@ -642,17 +783,15 @@ export default function CoinBeatDashboard() {
                 ? `Loading page ${currentPage}...`
                 : `Live data • Page ${currentPage} • Last updated: ${lastUpdated.toLocaleTimeString()}`}
             </span>
-            {consistencyLoading && (
-              <span className={`text-xs ${isDarkMode ? "text-blue-300" : "text-blue-600"}`}>
-                • Loading consistency scores...
-              </span>
-            )}
           </div>
         </div>
 
         {/* Elegant Footer */}
         <ElegantFooter isDarkMode={isDarkMode} />
       </div>
+
+      {/* Animated Notification List */}
+      {user && <AnimatedNotificationList user={user} isDarkMode={isDarkMode} />}
     </div>
   )
 }

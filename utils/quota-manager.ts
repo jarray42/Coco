@@ -9,6 +9,7 @@ export interface UserQuota {
   billing_plan: string
   created_at: string
   updated_at: string
+  eggs: number
 }
 
 export async function getUserQuota(user: AuthUser): Promise<UserQuota | null> {
@@ -40,6 +41,7 @@ export async function createUserQuota(user: AuthUser): Promise<UserQuota | null>
         tokens_used: 0,
         monthly_limit: 20, // Free tier limit
         billing_plan: "free",
+        eggs: 10,
       })
       .select()
       .single()

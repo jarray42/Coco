@@ -9,8 +9,8 @@ export async function getAllCoinsData(): Promise<CryptoData[]> {
 
     const { data, error } = await supabase
       .from("coins")
-      .select("*")
-      .order("market_cap", { ascending: false, nullsLast: true })
+      .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
+      .order("market_cap", { ascending: false })
 
     if (error) {
       console.error("Error fetching all coins:", error)

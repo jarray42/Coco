@@ -13,7 +13,6 @@ import {
   Legend,
   Filler,
 } from "chart.js"
-import { calculateBeatScore } from "../utils/beat-calculator"
 import type { CoinHistoryData } from "../actions/fetch-coin-history"
 
 // Register ChartJS components
@@ -75,21 +74,10 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
 
       let data
       if (metric === "health_score") {
-        // Calculate health score for each history point
+        // Use pre-calculated health scores from history data
         data = historyData.map((item) => {
-          try {
-            const calculatedScore = calculateBeatScore({
-              ...item,
-              volume_24h: item.volume_24h || 0,
-              github_stars: item.github_stars || 0,
-              twitter_followers: item.twitter_followers || 0,
-              github_last_updated: item.date,
-              twitter_first_tweet_date: item.date,
-            } as any)
-            return calculatedScore
-          } catch (e) {
-            return 0
-          }
+          // Use health_score from database if available, otherwise default to 50
+          return (item as any).health_score || 50
         })
       } else {
         data = historyData

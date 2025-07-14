@@ -40,15 +40,17 @@ export async function getCoinDetails(coinId: string): Promise<CryptoData | null>
   }
 }
 
-export async function getCoinHistory(coinId: string): Promise<CoinHistoryData[]> {
+export async function getCoinHistory(coinId: string, days: number = 7): Promise<CoinHistoryData[]> {
   try {
-    // Calculate date range for last 7 days
+    // Calculate date range
     const endDate = new Date()
     const startDate = new Date()
-    startDate.setDate(endDate.getDate() - 7)
+    startDate.setDate(endDate.getDate() - days)
 
     const startDateStr = startDate.toISOString().split("T")[0] // Format: YYYY-MM-DD
     const endDateStr = endDate.toISOString().split("T")[0] // Format: YYYY-MM-DD
+
+    console.log(`Fetching ${days} days of history for ${coinId} from ${startDateStr} to ${endDateStr}`)
 
     // Try different parameter orders for the function
     let data, error
@@ -61,6 +63,7 @@ export async function getCoinHistory(coinId: string): Promise<CoinHistoryData[]>
     })
 
     if (!result1.error) {
+      console.log(`Found ${result1.data?.length || 0} records from RPC function`)
       return result1.data || []
     }
 
@@ -72,6 +75,7 @@ export async function getCoinHistory(coinId: string): Promise<CoinHistoryData[]>
     })
 
     if (!result2.error) {
+      console.log(`Found ${result2.data?.length || 0} records from RPC function (variant 2)`)
       return result2.data || []
     }
 
@@ -79,12 +83,13 @@ export async function getCoinHistory(coinId: string): Promise<CoinHistoryData[]>
     const result3 = await supabase.rpc("get_historical_data", [coinId, startDateStr, endDateStr])
 
     if (!result3.error) {
+      console.log(`Found ${result3.data?.length || 0} records from RPC function (positional)`)
       return result3.data || []
     }
 
-    // Fallback: Query the price_history table directly
-    console.log("Function call failed, trying direct table query...")
-    const fallbackResult = await supabase
+    // Fallback 1: Query the price_history table directly
+    console.log("RPC function failed, trying price_history table...")
+    const priceHistoryResult = await supabase
       .from("price_history")
       .select("*")
       .eq("coingecko_id", coinId)
@@ -92,14 +97,59 @@ export async function getCoinHistory(coinId: string): Promise<CoinHistoryData[]>
       .lte("date", endDateStr)
       .order("date", { ascending: true })
 
-    if (fallbackResult.error) {
-      console.error("Error fetching coin history (fallback):", fallbackResult.error)
-      return []
+    if (!priceHistoryResult.error && priceHistoryResult.data && priceHistoryResult.data.length > 0) {
+      console.log(`Found ${priceHistoryResult.data.length} records from price_history table`)
+      return priceHistoryResult.data
     }
 
-    return fallbackResult.data || []
+    // Fallback 2: Query the crypto_data table
+    console.log("price_history table failed, trying crypto_data table...")
+    const cryptoDataResult = await supabase
+      .from("crypto_data")
+      .select("coingecko_id, price, market_cap, volume_24h, github_stars, github_forks, twitter_followers, scraped_at")
+      .eq("coingecko_id", coinId)
+      .gte("scraped_at", startDate.toISOString())
+      .lte("scraped_at", endDate.toISOString())
+      .order("scraped_at", { ascending: true })
+      .limit(Math.min(days * 10, 200)) // Reasonable limit based on days
+
+    if (!cryptoDataResult.error && cryptoDataResult.data && cryptoDataResult.data.length > 0) {
+      // Transform crypto_data format to match CoinHistoryData interface
+      const transformedData = cryptoDataResult.data.map((item: any, index: number) => ({
+        id: index + 1,
+        coingecko_id: item.coingecko_id,
+        price: item.price || 0,
+        market_cap: item.market_cap || 0,
+        volume_24h: item.volume_24h || 0,
+        github_stars: item.github_stars,
+        github_forks: item.github_forks,
+        twitter_followers: item.twitter_followers,
+        date: item.scraped_at.split('T')[0], // Convert to YYYY-MM-DD format
+      }))
+
+      console.log(`Found ${transformedData.length} records from crypto_data table`)
+      return transformedData
+    }
+
+    console.log("No historical data found in any table")
+    return []
   } catch (error) {
     console.error("Error in getCoinHistory:", error)
     return []
   }
+}
+
+// Helper function to get different time ranges
+export async function getCoinHistoryForPeriod(
+  coinId: string, 
+  period: '7d' | '30d' | '90d' | '1y'
+): Promise<CoinHistoryData[]> {
+  const dayMap = {
+    '7d': 7,
+    '30d': 30,
+    '90d': 90,
+    '1y': 365
+  }
+
+  return getCoinHistory(coinId, dayMap[period])
 }

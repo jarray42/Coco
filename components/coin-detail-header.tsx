@@ -7,12 +7,12 @@ import { ElegantPixelatedHeart } from "./elegant-pixelated-heart"
 import { ConsistencyScoreDisplay } from "./consistency-score-display"
 import { formatNumber, formatPrice, safeNumber, safePercentage } from "../utils/beat-calculator"
 import type { CryptoData } from "../utils/beat-calculator"
-import type { ConsistencyResult } from "../actions/fetch-consistency-data"
+
 
 interface CoinDetailHeaderProps {
   coin: CryptoData
   beatScore: number
-  consistencyData?: ConsistencyResult | null
+  consistencyData?: any | null
   isDarkMode: boolean
 }
 
@@ -148,8 +148,8 @@ export function CoinDetailHeader({ coin, beatScore, consistencyData, isDarkMode 
           </a>
         )}
 
-        {coin.github_url && (
-          <a href={coin.github_url} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
+        {coin.github && (
+          <a href={coin.github} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
             <Github className="w-4 h-4" />
             GitHub
             {coin.github_stars && <span className="ml-1">({formatNumber(coin.github_stars)})</span>}

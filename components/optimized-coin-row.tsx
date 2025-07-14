@@ -3,7 +3,7 @@
 import { memo } from "react"
 import { Users, TrendingUp, Star } from "lucide-react"
 import type { CryptoData } from "../utils/beat-calculator"
-import { formatNumber, formatPrice } from "../utils/beat-calculator"
+import { formatNumber, formatPrice, getHealthScore } from "../utils/beat-calculator"
 import { ElegantPixelatedHeart } from "./elegant-pixelated-heart"
 import { ClickableSocialLink } from "./clickable-social-link"
 import Link from "next/link"
@@ -11,7 +11,7 @@ import { PortfolioWalletIcon } from "./portfolio-wallet-icon"
 import type { AuthUser } from "../utils/supabase-auth"
 import { CuteHeartTooltip } from "./cute-heart-tooltip"
 import { ConsistencyScoreDisplay } from "./consistency-score-display"
-import type { ConsistencyResult } from "../utils/consistency-calculator"
+
 import Image from "next/image"
 
 interface OptimizedCoinRowProps {
@@ -20,7 +20,7 @@ interface OptimizedCoinRowProps {
   isDarkMode: boolean
   beatScore: number
   consistencyScore?: number
-  consistencyDetails?: ConsistencyResult
+  consistencyDetails?: any
   user?: AuthUser | null
 }
 
@@ -79,8 +79,8 @@ export const OptimizedCoinRow = memo(function OptimizedCoinRow({
               className="w-8 h-8 rounded-xl shadow-sm transition-all duration-300 hover:scale-110"
               loading="lazy"
               onError={(e) => {
-                e.currentTarget.style.display = "none"
-                e.currentTarget.nextElementSibling!.style.display = "flex"
+                (e.currentTarget as HTMLElement).style.display = "none"
+                ;(e.currentTarget.nextElementSibling as HTMLElement).style.display = "flex"
               }}
             />
           ) : (
@@ -156,8 +156,8 @@ export const OptimizedCoinRow = memo(function OptimizedCoinRow({
       {/* GitHub Stars - NOT clickable to coin page */}
       <div className="flex-shrink-0 w-24 flex items-center">
         <ClickableSocialLink
-          url={data.github_url}
-          value={data.github_stars}
+          url={data.github || null}
+          value={data.github_stars || null}
           icon={<Star className="w-3 h-3" />}
           label="GitHub Stars"
           isDarkMode={isDarkMode}
@@ -168,8 +168,8 @@ export const OptimizedCoinRow = memo(function OptimizedCoinRow({
       {/* Twitter Followers - NOT clickable to coin page */}
       <div className="flex-shrink-0 w-24 flex items-center">
         <ClickableSocialLink
-          url={data.twitter_url}
-          value={data.twitter_followers}
+          url={data.twitter_url || null}
+          value={data.twitter_followers || null}
           icon={<Users className="w-3 h-3" />}
           label="Twitter Followers"
           isDarkMode={isDarkMode}

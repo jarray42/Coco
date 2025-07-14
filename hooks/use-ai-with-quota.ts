@@ -7,6 +7,7 @@ import {
   getDetailedPortfolioAnalysisWithQuota,
 } from "../actions/ai-portfolio-advisor-with-quota"
 import type { AuthUser } from "../utils/supabase-auth"
+import { getUserQuota } from "../utils/quota-manager"
 
 interface QuotaError {
   needUpgrade: true
@@ -61,6 +62,10 @@ export function useAIWithQuota(user: AuthUser | null) {
       handleQuotaError(result)
       return null
     }
+
+    // After a successful chat, fetch the latest quota
+    const updatedQuota = await getUserQuota(user)
+    setQuotaInfo(updatedQuota)
 
     return result
   }

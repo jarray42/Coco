@@ -6,7 +6,7 @@ import type { CryptoData } from "../utils/beat-calculator"
 // Enhanced coin fetching with better error handling and performance
 export async function getCoinsData(
   page = 1,
-  limit = 100,
+  limit = 50,
 ): Promise<{
   coins: CryptoData[]
   totalCount: number
@@ -24,11 +24,11 @@ export async function getCoinsData(
       supabase
         .from("coins")
         .select("*", { count: "exact", head: true }),
-      // Get paginated data
+      // Get paginated data with all score fields
       supabase
         .from("coins")
-        .select("*")
-        .order("market_cap", { ascending: false, nullsLast: true })
+        .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
+        .order("market_cap", { ascending: false })
         .range(offset, offset + limit - 1),
     ])
 

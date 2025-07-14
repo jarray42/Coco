@@ -1,6 +1,9 @@
 import { supabase } from "./supabase"
 import type { AuthUser } from "./supabase-auth"
 
+console.log('[DEBUG] Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log('[DEBUG] Supabase Service Role Key:', process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 export interface PortfolioItem {
   id: string
   user_id: string
@@ -17,7 +20,7 @@ export async function addToPortfolio(
   coingeckoId: string,
   coinName: string,
   coinSymbol: string,
-  amount = 1,
+  amount = 0,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { data, error } = await supabase
@@ -64,6 +67,7 @@ export async function removeFromPortfolio(
 
 export async function getUserPortfolio(user: AuthUser): Promise<PortfolioItem[]> {
   try {
+    console.log('[DEBUG] getUserPortfolio called with user:', user);
     const { data, error } = await supabase
       .from("user_portfolios")
       .select("*")
@@ -71,14 +75,15 @@ export async function getUserPortfolio(user: AuthUser): Promise<PortfolioItem[]>
       .order("added_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching portfolio:", error, JSON.stringify(error))
-      return []
+      console.error('[DEBUG] Error fetching portfolio:', error, JSON.stringify(error));
+      return [];
     }
 
-    return data || []
+    console.log('[DEBUG] getUserPortfolio result:', data);
+    return data || [];
   } catch (error) {
-    console.error("Error fetching portfolio (exception):", error, JSON.stringify(error))
-    return []
+    console.error('[DEBUG] Error fetching portfolio (exception):', error, JSON.stringify(error));
+    return [];
   }
 }
 

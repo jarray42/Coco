@@ -20,7 +20,15 @@ export interface CryptoData {
   last_updated: string
   logo_url?: string | null
   logo_storage_path?: string | null
+  // New pre-calculated score fields from database
+  health_score?: number | null
+  twitter_subscore?: number | null
+  github_subscore?: number | null
+  consistency_score?: number | null
+  gem_score?: number | null
 }
+
+export type SortOption = "rank" | "name" | "price" | "marketCap" | "volume" | "priceChange24h" | "githubStars" | "twitterFollowers" | "healthScore" | "consistencyScore"
 
 // Safe number conversion with fallback
 export function safeNumber(value: any, fallback = 0): number {
@@ -186,8 +194,8 @@ export function sortCoins(coins: CryptoData[], sortBy: string, sortOrder: "asc" 
         bValue = safeNumber(b.twitter_followers, 0)
         break
       case "beat_score":
-        aValue = calculateBeatScore(a)
-        bValue = calculateBeatScore(b)
+        aValue = getHealthScore(a)
+        bValue = getHealthScore(b)
         break
       default:
         aValue = safeNumber(a.market_cap, 0)
@@ -202,4 +210,28 @@ export function sortCoins(coins: CryptoData[], sortBy: string, sortOrder: "asc" 
   })
 
   return sorted
+}
+
+// Get health score from database (pre-calculated) or fallback to default
+export function getHealthScore(coin: CryptoData | { health_score?: number | null; [key: string]: any }): number {
+  // Use pre-calculated health_score from database if available
+  if (coin.health_score !== null && coin.health_score !== undefined) {
+    return safeNumber(coin.health_score, 0)
+  }
+  
+  // Return default score if not available in database
+  return 50
+}
+
+
+
+// Get gem score from database (pre-calculated) or fallback to default
+export function getGemScore(coin: CryptoData | { gem_score?: number | null; [key: string]: any }): number {
+  // Use pre-calculated gem_score from database if available
+  if (coin.gem_score !== null && coin.gem_score !== undefined) {
+    return safeNumber(coin.gem_score, 0)
+  }
+  
+  // Fallback to default score
+  return 50
 }

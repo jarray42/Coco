@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { User, Settings, LogOut, Heart, Wallet } from "lucide-react"
+import { User, Settings, LogOut, Heart, Wallet, Bell } from "lucide-react"
 import { signOut, type AuthUser } from "../utils/supabase-auth"
 
 interface UserMenuProps {
@@ -75,6 +75,13 @@ export function UserMenu({ user, isDarkMode, onSignOut }: UserMenuProps) {
           <Link href="/portfolio">
             <Wallet className="w-4 h-4 mr-2" />
             Portfolio
+          </Link>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem asChild className="px-3 py-2 cursor-pointer rounded-lg mx-2 my-1">
+          <Link href="/notifications">
+            <Bell className="w-4 h-4 mr-2" />
+            Notifications
           </Link>
         </DropdownMenuItem>
 
