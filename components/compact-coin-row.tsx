@@ -594,7 +594,7 @@ export function CompactCoinRow({
                 >
                   <span className="sr-only">Open notification setup</span>
                   <img
-                    src={hasActiveAlerts ? "/Bell2.ico" : "/Bell1.ico"}
+                    src={hasActiveAlerts ? "/bell2.ico" : "/bell1.ico"}
                     alt={hasActiveAlerts ? "Active alerts" : "Set alerts"}
                     className="w-6 h-6 transition-all duration-300"
                   />
