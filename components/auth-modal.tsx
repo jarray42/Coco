@@ -2,8 +2,7 @@
 
 import type React from "react"
 import { supabaseAuth } from "../utils/supabase-auth" // Declare the variable here
-import { Auth } from '@supabase/auth-ui-react'
-import { ThemeSupa } from '@supabase/auth-ui-shared'
+import dynamic from 'next/dynamic'
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -14,6 +13,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, EyeOff, Mail, Lock, User, Loader2, CheckCircle, RefreshCw } from "lucide-react"
 import { signIn, signUp, resendConfirmation } from "../utils/supabase-auth"
 import Image from "next/image"
+
+// Dynamically import Auth UI to prevent SSR issues
+const Auth = dynamic(() => import('@supabase/auth-ui-react').then(mod => mod.Auth), {
+  ssr: false,
+  loading: () => <div className="p-4 text-center">Loading authentication...</div>
+})
 
 interface AuthModalProps {
   isDarkMode: boolean
@@ -592,25 +597,6 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
               
               <Auth
                 supabaseClient={supabaseAuth}
-                appearance={{
-                  theme: ThemeSupa,
-                  variables: {
-                    default: {
-                      colors: {
-                        brand: isDarkMode ? '#3b82f6' : '#0ea5e9',
-                        brandAccent: isDarkMode ? '#1d4ed8' : '#0284c7',
-                        inputBackground: isDarkMode ? '#1e293b' : '#ffffff',
-                        inputText: isDarkMode ? '#f1f5f9' : '#0f172a',
-                        inputBorder: isDarkMode ? '#475569' : '#e2e8f0',
-                        inputLabelText: isDarkMode ? '#cbd5e1' : '#475569',
-                        anchorTextColor: isDarkMode ? '#60a5fa' : '#0ea5e9',
-                        anchorTextHoverColor: isDarkMode ? '#93c5fd' : '#0284c7',
-                        defaultButtonBackground: isDarkMode ? '#3b82f6' : '#0ea5e9',
-                        defaultButtonBackgroundHover: isDarkMode ? '#1d4ed8' : '#0284c7',
-                      }
-                    }
-                  }
-                }}
                 providers={['google']}
                 redirectTo={`${window.location.origin}/auth/callback`}
                 showLinks={false}
