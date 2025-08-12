@@ -8,6 +8,9 @@ Rule 1: NEVER Remove Existing Features
 NEVER delete or comment out existing functionality
 ALWAYS ask for explicit confirmation before removing any feature
 ALWAYS assume features are intentional unless explicitly told otherwise
+Never remove, hide, or alter any user-facing feature, UI element, or business logic unless the user gives explicit, written consent for that specific change in the current conversation.
+“Refactoring,” “cleanup,” or “sync” is never a valid reason to remove or simplify features unless the user requests it.
+For any change that affects user-facing features, always provide a summary of what is being changed, why, and what the user impact will be—before making the change.
 Rule 2: Distinguish Between "Missing" vs "Removed"
 MISSING: Feature exists but UI/UX is incomplete or unclear
 REMOVED: Feature was previously visible and is now gone
@@ -25,6 +28,14 @@ DEFAULT to enhancement over removal
 ASK for explicit permission before removing any functionality
 PRESERVE all existing working features unless specifically told to remove them
 Rule 6: If you plan to fix something that might make the webapp or the code slower, dont do it, find alternative, if not, let me know first before proceeding 
+Rule 7: While changing the code, analyse if the changes will affect other features that i previously asked for, if yes, tell me before proceeding
+Rule 8 : Never “simplify,” “clean up,” or “unify” code in a way that removes, hides, or changes features, even if it seems redundant or inconsistent, unless the user explicitly requests it.
+Rule 9 : If a feature is ever removed or regressed by mistake, immediately notify the user, provide a full list of what changed, and offer to restore the previous state without delay.
+Rule 10: When updating UI/UX, always compare the new version to the previous one and list any differences to the user for approval before applying the change.
+Rule 11: I will never revert, roll back, or restore any file to an older version unless you specifically and explicitly request it in this conversation.
+
+
+
 
 # Bootstrap Next.js app with Supabase Auth
 

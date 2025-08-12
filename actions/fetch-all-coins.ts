@@ -1,29 +1,22 @@
 "use server"
 
-import { supabase } from "../utils/supabase"
 import type { CryptoData } from "../utils/beat-calculator"
+import { getAllCoinsFromBunny } from "./fetch-all-coins-from-bunny"
 
 export async function getAllCoinsData(): Promise<CryptoData[]> {
   try {
-    console.log("Fetching all coins for portfolio...")
+    console.log("Fetching all coins for portfolio from Bunny CDN...")
 
-    const { data, error } = await supabase
-      .from("coins")
-      .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-      .order("market_cap", { ascending: false })
+    // Fetch all coins from Bunny CDN (includes pre-calculated scores)
+    const allCoins = await getAllCoinsFromBunny()
 
-    if (error) {
-      console.error("Error fetching all coins:", error)
-      throw new Error(`Database error: ${error.message}`)
-    }
-
-    if (!data) {
-      console.log("No coin data found")
+    if (!allCoins || allCoins.length === 0) {
+      console.log("No coin data found from Bunny CDN")
       return []
     }
 
     // Calculate rank based on market cap and add logo URL processing
-    const coinsWithRank = data.map((coin, index) => ({
+    const coinsWithRank = allCoins.map((coin: CryptoData, index: number) => ({
       ...coin,
       rank: index + 1,
       logo_url:
@@ -31,10 +24,10 @@ export async function getAllCoinsData(): Promise<CryptoData[]> {
         `https://assets.coingecko.com/coins/images/${coin.coingecko_id}/large/${coin.coingecko_id}.png`,
     }))
 
-    console.log(`Successfully fetched ${coinsWithRank.length} coins`)
+    console.log(`Successfully fetched ${coinsWithRank.length} coins from Bunny CDN`)
     return coinsWithRank
   } catch (error) {
     console.error("Error in getAllCoinsData:", error)
-    throw new Error("Failed to fetch all coin data")
+    throw new Error("Failed to fetch all coin data from Bunny CDN")
   }
 }

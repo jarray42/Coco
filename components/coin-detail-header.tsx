@@ -1,7 +1,8 @@
 "use client"
 
-import { ArrowLeft, ExternalLink, Github, Twitter } from "lucide-react"
+import { ArrowLeft, Github, Twitter } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { ElegantPixelatedHeart } from "./elegant-pixelated-heart"
 import { ConsistencyScoreDisplay } from "./consistency-score-display"
@@ -16,11 +17,36 @@ interface CoinDetailHeaderProps {
   isDarkMode: boolean
 }
 
+function CoinGeckoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.15" />
+      <circle cx="9" cy="10" r="2" fill="currentColor" />
+      <path
+        d="M14 12c-1.5 0-2.5.5-3.5 1.5s-1 2-.5 2.5 1.5.5 2.5-.5S15 13.5 15 12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function CoinDetailHeader({ coin, beatScore, consistencyData, isDarkMode }: CoinDetailHeaderProps) {
   // Safely handle price change with proper NaN checking
   const priceChange = safeNumber(coin.price_change_24h, 0)
   const safeBeatScore = safeNumber(beatScore, 0)
   const safeConsistencyScore = consistencyData ? safeNumber(consistencyData.consistency_score, 0) : 0
+
+  const coingeckoLink = (coin.coingecko_url && coin.coingecko_url.trim() !== "")
+    ? coin.coingecko_url
+    : (coin.coingecko_id ? `https://www.coingecko.com/en/coins/${coin.coingecko_id}` : "")
 
   const linkButtonClass = `inline-flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-300 text-sm ${
     isDarkMode
@@ -101,7 +127,7 @@ export function CoinDetailHeader({ coin, beatScore, consistencyData, isDarkMode 
                   : "text-red-700 bg-red-100/80"
             }`}
           >
-            {safePercentage(priceChange)}
+            {Math.abs(priceChange).toFixed(2)}%
           </div>
         </div>
 
@@ -148,17 +174,19 @@ export function CoinDetailHeader({ coin, beatScore, consistencyData, isDarkMode 
           </a>
         )}
 
-        {coin.github && (
-          <a href={coin.github} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
+
+
+        {coin.github_url && coin.github_url.trim() !== "" && (
+          <a href={coin.github_url} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
             <Github className="w-4 h-4" />
             GitHub
             {coin.github_stars && <span className="ml-1">({formatNumber(coin.github_stars)})</span>}
           </a>
         )}
 
-        {coin.coingecko_url && (
-          <a href={coin.coingecko_url} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
-            <ExternalLink className="w-4 h-4" />
+        {coingeckoLink && (
+          <a href={coingeckoLink} target="_blank" rel="noopener noreferrer" className={linkButtonClass}>
+            <Image src="/CoinGecko_logo.png" alt="CoinGecko" width={24} height={24} className="w-6 h-6 -my-1" />
             CoinGecko
           </a>
         )}

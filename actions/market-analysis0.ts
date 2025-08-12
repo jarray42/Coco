@@ -5,6 +5,9 @@ import { groq } from "@ai-sdk/groq"
 import { openai } from "@ai-sdk/openai"
 import { createClient } from "@supabase/supabase-js"
 import { formatPrice, getHealthScore } from "../utils/beat-calculator"
+import { getUserQuota, checkQuotaLimit, incrementTokenUsage } from "../utils/quota-manager"
+import type { AuthUser } from "../utils/supabase-auth"
+import { getAllCoinsFromBunny } from "./fetch-all-coins-from-bunny"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -109,19 +112,15 @@ async function generateWithFallback(
   }
 }
 
-// Fetch all coins from Supabase
+// Fetch all coins from Bunny.net
 async function fetchAllCoins() {
-  const { data: coins, error } = await supabase
-    .from("coins")
-    .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-    .order("market_cap", { ascending: false })
-
-  if (error) {
-    console.error("Error fetching coins:", error)
+  try {
+    const allCoins = await getAllCoinsFromBunny()
+    return allCoins || []
+  } catch (error) {
+    console.error("Error fetching coins from Bunny.net:", error)
     return []
   }
-
-  return coins || []
 }
 
 // Proper date parsing function

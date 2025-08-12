@@ -45,10 +45,10 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
   // Format numbers for non-price metrics
   const formatNonPriceNumber = (value: number) => {
     if (value === 0) return "0"
-    if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(1) + "B"
-    if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(1) + "M"
-    if (Math.abs(value) >= 1e3) return (value / 1e3).toFixed(1) + "K"
-    return value.toFixed(0)
+    if (Math.abs(value) >= 1e9) return Math.round(value / 1e9) + "B"
+    if (Math.abs(value) >= 1e6) return Math.round(value / 1e6) + "M"
+    if (Math.abs(value) >= 1e3) return Math.round(value / 1e3) + "K"
+    return Math.round(value).toString()
   }
 
   // Format dates like CoinGecko
@@ -72,35 +72,63 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
         }
       })
 
-      let data
+      let datasets = []
       if (metric === "health_score") {
-        // Use pre-calculated health scores from history data
-        data = historyData.map((item) => {
-          // Use health_score from database if available, otherwise default to 50
-          return (item as any).health_score || 50
-        })
+        // Health Score dataset
+        const healthData = historyData.map((item) =>
+          typeof item.health_score === 'number' ? item.health_score : 50
+        )
+        // Consistency Score dataset
+        const consistencyData = historyData.map((item) =>
+          typeof item.consistency_score === 'number' ? item.consistency_score : 50
+        )
+        datasets = [
+          {
+            label: "Health Score",
+            data: healthData,
+            borderColor: isDarkMode ? "#22c55e" : "#16a34a",
+            backgroundColor: isDarkMode ? "rgba(34, 197, 94, 0.3)" : "rgba(22, 163, 74, 0.3)",
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: isDarkMode ? "#22c55e" : "#16a34a",
+            pointBorderColor: isDarkMode ? "#1e293b" : "#ffffff",
+            pointBorderWidth: 2,
+            tension: 0.4,
+            fill: true,
+          },
+          {
+            label: "Consistency Score",
+            data: consistencyData,
+            borderColor: isDarkMode ? "#6366f1" : "#2563eb",
+            backgroundColor: isDarkMode ? "rgba(99, 102, 241, 0.2)" : "rgba(37, 99, 235, 0.2)",
+            borderWidth: 2,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: isDarkMode ? "#6366f1" : "#2563eb",
+            pointBorderColor: isDarkMode ? "#1e293b" : "#ffffff",
+            pointBorderWidth: 2,
+            tension: 0.4,
+            fill: false,
+          }
+        ]
       } else {
-        data = historyData
+        const gradientColors = {
+          price: isDarkMode ? "rgba(59, 130, 246, 0.3)" : "rgba(14, 165, 233, 0.3)",
+          market_cap: isDarkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(168, 85, 247, 0.3)",
+          volume_24h: isDarkMode ? "rgba(236, 72, 153, 0.3)" : "rgba(219, 39, 119, 0.3)",
+          github_stars: isDarkMode ? "rgba(245, 158, 11, 0.3)" : "rgba(217, 119, 6, 0.3)",
+          github_forks: isDarkMode ? "rgba(16, 185, 129, 0.3)" : "rgba(5, 150, 105, 0.3)",
+          twitter_followers: isDarkMode ? "rgba(59, 130, 246, 0.3)" : "rgba(37, 99, 235, 0.3)",
+          health_score: isDarkMode ? "rgba(34, 197, 94, 0.3)" : "rgba(22, 163, 74, 0.3)",
+        }
+        const data = historyData
           .map((item) => {
             const value = item[metric] || 0
             return typeof value === "number" && !isNaN(value) ? Math.max(0, value) : 0
           })
           .filter((val) => val >= 0)
-      }
-
-      const gradientColors = {
-        price: isDarkMode ? "rgba(59, 130, 246, 0.3)" : "rgba(14, 165, 233, 0.3)",
-        market_cap: isDarkMode ? "rgba(139, 92, 246, 0.3)" : "rgba(168, 85, 247, 0.3)",
-        volume_24h: isDarkMode ? "rgba(236, 72, 153, 0.3)" : "rgba(219, 39, 119, 0.3)",
-        github_stars: isDarkMode ? "rgba(245, 158, 11, 0.3)" : "rgba(217, 119, 6, 0.3)",
-        github_forks: isDarkMode ? "rgba(16, 185, 129, 0.3)" : "rgba(5, 150, 105, 0.3)",
-        twitter_followers: isDarkMode ? "rgba(59, 130, 246, 0.3)" : "rgba(37, 99, 235, 0.3)",
-        health_score: isDarkMode ? "rgba(34, 197, 94, 0.3)" : "rgba(22, 163, 74, 0.3)",
-      }
-
-      setChartData({
-        labels,
-        datasets: [
+        datasets = [
           {
             label: title,
             data,
@@ -114,8 +142,13 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
             pointBorderWidth: 2,
             tension: 0.4,
             fill: true,
-          },
-        ],
+          }
+        ]
+      }
+
+      setChartData({
+        labels,
+        datasets,
       })
     } catch (error) {
       console.error("Error processing chart data:", error)
@@ -132,7 +165,15 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        display: false, // Hide legend for cleaner look
+        display: true, // Show legend for health/consistency chart
+        position: 'top' as const,
+        labels: {
+          font: {
+            family: "'Inter', sans-serif",
+            size: 12,
+            weight: 500,
+          },
+        },
       },
       tooltip: {
         backgroundColor: isDarkMode ? "rgba(15, 23, 42, 0.95)" : "rgba(255, 255, 255, 0.95)",
@@ -146,12 +187,12 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
         titleFont: {
           family: "'Inter', sans-serif",
           size: 12,
-          weight: "600",
+          weight: 600,
         },
         bodyFont: {
           family: "'Inter', sans-serif",
           size: 11,
-          weight: "500",
+          weight: 500,
         },
         callbacks: {
           title: (context: any) => context[0].label,
@@ -179,7 +220,7 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
           font: {
             family: "'Inter', sans-serif",
             size: 10,
-            weight: "500",
+            weight: 500,
           },
           maxRotation: 0,
           minRotation: 0,
@@ -200,7 +241,7 @@ export function CoinHistoryChart({ historyData, isDarkMode, metric, title, color
           font: {
             family: "'Inter', sans-serif",
             size: 10,
-            weight: "500",
+            weight: 500,
           },
           maxTicksLimit: 5,
           callback: (value: any) => {

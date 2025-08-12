@@ -24,17 +24,21 @@ export async function GET(request: NextRequest) {
         .eq('user_id', userId)
         .eq('is_active', true),
       
-      // Coin alerts (staking)
+      // Coin alerts (staking) - only pending and verified, exclude paid
       supabase
         .from('coin_alerts')
-        .select('coin_id, alert_type, user_id')
-        .eq('user_id', userId),
+        .select('coin_id, alert_type, user_id, status')
+        .eq('user_id', userId)
+        .in('status', ['pending', 'verified'])
+        .eq('archived', false),
       
-      // Verified alerts (for all coins)
+      // Verified alerts (for all coins) - including both user-submitted and admin-created
       supabase
         .from('coin_alerts')
         .select('coin_id, alert_type')
         .eq('status', 'verified')
+        .eq('archived', false)
+        .in('alert_type', ['migration', 'delisting', 'rebrand'])
     ])
 
     // Handle errors

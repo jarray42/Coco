@@ -5,6 +5,9 @@ import { groq } from "@ai-sdk/groq"
 import { createClient } from "@supabase/supabase-js"
 import { formatPrice, getHealthScore } from "../utils/beat-calculator"
 import { openai } from "@ai-sdk/openai"
+import { getUserQuota, checkQuotaLimit, incrementTokenUsage } from "../utils/quota-manager"
+import type { AuthUser } from "../utils/supabase-auth"
+import { getAllCoinsFromBunny } from "./fetch-all-coins-from-bunny"
 
 export interface MarketAnalysisResult {
   analysis: string
@@ -161,15 +164,13 @@ function minMaxNormalize(values: number[]): number[] {
 }
 
 async function fetchAllCoins() {
-  const { data: coins, error } = await supabase
-    .from("coins")
-    .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-    .order("market_cap", { ascending: false })
-    if (error) {
-    console.error("Error fetching coins:", error)
+  try {
+    const allCoins = await getAllCoinsFromBunny()
+    return allCoins || []
+  } catch (error) {
+    console.error("Error fetching coins from Bunny.net:", error)
     return []
   }
-  return coins || []
 }
 
 async function performCoinAnalysis(): Promise<{
@@ -335,7 +336,8 @@ async function performCoinAnalysis(): Promise<{
 
 export async function analyzeMarket(
   detailed = false,
-): Promise<MarketAnalysisResult> {
+  model: string = 'auto',
+): Promise<MarketAnalysisResult & { migrationDelistingSummary?: string }> {
   try {
     // Perform comprehensive coin analysis
     const { enrichedCoins, capAnalysis, riskIndicators } = await performCoinAnalysis()
@@ -343,6 +345,39 @@ export async function analyzeMarket(
     if (enrichedCoins.length === 0) {
       throw new Error("No coin data available for analysis")
     }
+
+    // --- MIGRATION/DELISTING ALERTS LOGIC ---
+    // Query Supabase for verified, not-archived migration/delisting alerts
+    const { data: migrationDelistingAlerts, error: migrationDelistingError } = await supabase
+      .from('coin_alerts')
+      .select('coin_id, alert_type')
+      .eq('status', 'verified')
+      .eq('archived', false)
+      .in('alert_type', ['migration', 'delisting'])
+
+    let migrationDelistingSummary = "No potential migration or delisting detected"
+    if (migrationDelistingAlerts && migrationDelistingAlerts.length > 0) {
+      // Map coin_id to coin name/symbol
+      const coinIdToCoin = Object.fromEntries(
+        enrichedCoins.map((coin: any) => [coin.coingecko_id, coin])
+      )
+      // Deduplicate by coin_id + alert_type
+      const seen = new Set()
+      const summaryList = migrationDelistingAlerts
+        .map((alert: any) => {
+          const coin = coinIdToCoin[alert.coin_id]
+          if (!coin) return null
+          const key = `${alert.coin_id}:${alert.alert_type}`
+          if (seen.has(key)) return null
+          seen.add(key)
+          return `${coin.name} (${coin.symbol}): ${alert.alert_type}`
+        })
+        .filter(Boolean)
+      if (summaryList.length > 0) {
+        migrationDelistingSummary = summaryList.join("; ")
+      }
+    }
+    // --- END MIGRATION/DELISTING LOGIC ---
 
     // Sort and categorize coins for traditional analysis
     const topPerformers = enrichedCoins
@@ -380,16 +415,32 @@ export async function analyzeMarket(
       .join('; ')
 
     const coinList = enrichedCoins
-      .slice(0, 20)
       .map(
         (coin: any) =>
           `${coin.name} (${coin.symbol}): $${coin.price?.toFixed(4)}, MC: ${formatPrice(coin.market_cap || 0)}, Health: ${coin.beatScore.toFixed(1)}/100, 24h: ${coin.price_change_24h?.toFixed(2)}%, Composite: ${coin.compositeScore.toFixed(2)}`,
       )
       .join("\n")
 
+    // Create a token-efficient coin list that includes all coins but doesn't exhaust quota
+    const topCoinsForPrompt = enrichedCoins
+      .slice(0, 50) // Top 50 coins in detail
+      .map(
+        (coin: any) =>
+          `${coin.name} (${coin.symbol}): $${coin.price?.toFixed(4)}, MC: ${formatPrice(coin.market_cap || 0)}, Health: ${coin.beatScore.toFixed(1)}/100, 24h: ${coin.price_change_24h?.toFixed(2)}%, Composite: ${coin.compositeScore.toFixed(2)}`,
+      )
+      .join("\n")
+
+    // Add a summary of all available coins
+    const coinSummary = `Total coins available: ${enrichedCoins.length} from Bunny.net database. Top 50 shown above. All coins are available for analysis.`
+
     const systemPrompt = `You are a seasoned financial advisor with deep expertise in cryptocurrency and traditional markets. 
 
-When analyzing the market, you must ONLY mention coins from the provided list - do not reference any other cryptocurrencies.
+When analyzing the market, you must ONLY mention coins from the provided list below - do not reference any other cryptocurrencies.
+
+AVAILABLE COINS FOR ANALYSIS (${enrichedCoins.length} coins from Bunny.net database):
+${topCoinsForPrompt}
+
+${coinSummary}
 
 RESPONSE FORMAT (${detailed ? "DETAILED" : "CONCISE"}):
 
@@ -419,7 +470,7 @@ RISK INDICATORS:
 • [Web search findings about migrations/delistings]
 
 MIGRATION & EXCHANGE ALERTS:
-[Specific migration/delisting alerts with sources, or "No potential migration or delisting detected"]
+${migrationDelistingSummary}
 
 STRATEGIC RECOMMENDATIONS:
 • [Specific action with percentages]
@@ -438,7 +489,7 @@ RISK INDICATORS:
 [Top 2 most critical risks only: ${riskSummary || "No major risks detected"}]
 
 MIGRATION & DELISTING ALERTS:
-[One line: specific alert with coin name, or "No potential migration or delisting detected"]
+${migrationDelistingSummary}
 
 ACTION SUGGESTED:
 [One action with verb + concrete numbers, or "Monitor current positions - no immediate action needed"]
@@ -480,18 +531,41 @@ ${enrichedCoins
   .map((coin: any) => `${coin.name}: ${coin.compositeScore.toFixed(2)}`)
   .join(", ")}
 
-ALL AVAILABLE COINS:
-${coinList}
+AVAILABLE COINS (Top 50 of ${enrichedCoins.length} total):
+${topCoinsForPrompt}
 
 ${detailed ? "Provide comprehensive analysis with detailed insights for each category and include all risk indicators." : "Provide ultra-concise expert analysis following the exact format specified with top 2 risks only."}`
 
-    // Generate the AI analysis string
-    const { text: analysis, modelUsed } = await generateWithFallback(systemPrompt, userPrompt)
+    // Model selection logic
+    let aiModel
+    if (model === 'auto' || !model) {
+      const availableModel = getAvailableModel()
+      if (!availableModel) throw new Error('No available AI model')
+      aiModel = availableModel.model
+    } else if (model === 'llama-3.1-8b-instant') {
+      aiModel = groq('llama-3.1-8b-instant')
+    } else if (model === 'mixtral-8x7b-32768') {
+      aiModel = groq('mixtral-8x7b-32768')
+    } else if (model === 'gpt-4o-mini') {
+      aiModel = openai('gpt-4o-mini')
+    } else if (model === 'claude-3-haiku-20240307') {
+      const { anthropic } = await import('@ai-sdk/anthropic')
+      aiModel = anthropic('claude-3-haiku-20240307')
+    } else {
+      const availableModel = getAvailableModel()
+      if (!availableModel) throw new Error('No available AI model')
+      aiModel = availableModel.model
+    }
+    const { text: analysis } = await generateText({
+      model: aiModel,
+      system: systemPrompt,
+      prompt: userPrompt,
+    })
 
     // Return all the structured data for frontend cards
     return {
       analysis,
-      modelUsed,
+      modelUsed: model,
       capAnalysis,
       riskIndicators,
       topPerformers,
@@ -506,6 +580,7 @@ ${detailed ? "Provide comprehensive analysis with detailed insights for each cat
       confidence: 80,
       keyPoints: [],
       recommendations: [],
+      migrationDelistingSummary,
     }
   } catch (error) {
     console.error("Error analyzing market:", error)

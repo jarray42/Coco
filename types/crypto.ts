@@ -9,7 +9,7 @@ export interface CryptoData {
   twitter_url: string
   twitter_followers: number
   twitter_first_tweet_date: string
-  github: string
+  github_url: string
   github_stars: number
   github_forks: number
   github_last_updated: string

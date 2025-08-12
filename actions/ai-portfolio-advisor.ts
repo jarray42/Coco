@@ -4,11 +4,12 @@ import { generateText } from "ai"
 import { groq } from "@ai-sdk/groq"
 import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
-import { getUserPortfolio } from "../utils/portfolio"
+import { getUserPortfolio, type PortfolioItem } from "../utils/portfolio"
 import { fetchCoins } from "./fetch-coins"
-import { getHealthScore } from "../utils/beat-calculator"
+import { getHealthScore, type CryptoData } from "../utils/beat-calculator"
 import { formatPrice } from "../utils/beat-calculator"
 import type { AuthUser } from "../utils/supabase-auth"
+import { getAllCoinsFromBunny } from "./fetch-all-coins-from-bunny"
 
 interface PortfolioAnalysis {
   totalValue: number
@@ -157,6 +158,74 @@ async function generateWithFallback(
   }
 }
 
+// New: allow explicit model preference aligned with market AI
+async function generateWithModelPreference(
+  systemPrompt: string,
+  userPrompt: string,
+  model: string,
+): Promise<{ text: string; modelUsed: string }> {
+  try {
+    if (model && model.startsWith('openrouter-')) {
+      const openRouterModelMap: Record<string, string> = {
+        'openrouter-qwen3-235b-a22b-07-25': 'qwen/qwen3-235b-a22b-07-25',
+        'openrouter-deepseek-r1t2-chimera': 'tngtech/deepseek-r1t2-chimera',
+        'openrouter-mistral-small-3.2-24b': 'mistralai/mistral-small-3.2-24b-instruct',
+        'openrouter-qwen3-4b': 'qwen/qwen3-4b',
+        'openrouter-qwen3-235b-a22b': 'qwen/qwen3-235b-a22b',
+        'openrouter-gemma-3-27b-it': 'google/gemma-3-27b-it',
+        'openrouter-gemini-pro': 'google/gemini-pro',
+        'openrouter-gpt-4o-mini-2024-07-18': 'openai/gpt-4o-mini-2024-07-18',
+        'openrouter-gbtoss': 'openai/gpt-oss-20b:free',
+      }
+      const modelId = openRouterModelMap[model] || 'qwen2-72b-instruct'
+      const apiKey = process.env.OPENROUTER_API_KEY
+      if (!apiKey) throw new Error('OPENROUTER_API_KEY not set')
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+        }),
+      })
+      if (!response.ok) {
+        const errorBody = await response.text()
+        throw new Error(`OpenRouter API error: ${response.status} ${errorBody}`)
+      }
+      const data = await response.json()
+      const text = data.choices?.[0]?.message?.content || 'No response from OpenRouter model.'
+      return { text, modelUsed: model }
+    }
+    if (model === 'auto' || !model) {
+      return generateWithFallback(systemPrompt, userPrompt)
+    }
+    let selectedModel: any
+    if (model === 'llama-3.1-8b-instant') {
+      selectedModel = groq('llama-3.1-8b-instant')
+    } else if (model === 'mixtral-8x7b-32768') {
+      selectedModel = groq('mixtral-8x7b-32768')
+    } else if (model === 'gpt-4o-mini') {
+      selectedModel = openai('gpt-4o-mini')
+    } else if (model === 'claude-3-haiku-20240307') {
+      selectedModel = anthropic('claude-3-haiku-20240307')
+    } else {
+      selectedModel = groq('llama-3.1-8b-instant')
+    }
+    const { text } = await generateText({ model: selectedModel, system: systemPrompt, prompt: userPrompt })
+    return { text, modelUsed: model }
+  } catch (err) {
+    console.error('[generateWithModelPreference ERROR]', err)
+    // fallback chain
+    return generateWithFallback(systemPrompt, userPrompt)
+  }
+}
+
 // Add a fetchWithTimeout helper at the top of the file
 async function fetchWithTimeout(resource: string, options: any = {}, timeout = 3000) {
   const controller = new AbortController();
@@ -259,7 +328,7 @@ function mapCoinDataToCryptoData(coin: any) {
     twitter_url: coin.twitter_url ?? "",
     twitter_followers: coin.twitter_followers ?? 0,
     twitter_first_tweet_date: coin.twitter_first_tweet_date ?? "",
-    github: coin.github ?? "",
+            github: coin.github_url ?? "",
     github_stars: coin.github_stars ?? 0,
     github_forks: coin.github_forks ?? 0,
     github_last_updated: coin.github_last_updated ?? "",
@@ -275,12 +344,13 @@ function mapCoinDataToCryptoData(coin: any) {
 
 export async function analyzePortfolioWithAI(
   user: AuthUser,
+  model: string = 'auto',
 ): Promise<{ analysis: PortfolioAnalysis; advice: string; modelUsed: string }> {
   try {
     // Get user's portfolio
     const portfolioItems = await getUserPortfolio(user)
     console.log("Fetched portfolioItems for user", user.id, portfolioItems);
-    const { coins: allCoins } = await fetchCoins()
+    const allCoins = await getAllCoinsFromBunny()
 
     // Enrich portfolio with current market data
     const enrichedPortfolio = portfolioItems.map((item) => {
@@ -288,7 +358,7 @@ export async function analyzePortfolioWithAI(
       if (!coinData) {
         console.warn("No coinData found for", item.coingecko_id, item.coin_name);
       }
-      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
+      const beatScore = coinData ? getHealthScore(coinData) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
       const priceChange24h = coinData?.price_change_24h || 0
 
@@ -439,7 +509,7 @@ ${webSearchResults.map((result) => `${result.coin}: ${result.result}`).join("\n"
 
 Provide ultra-concise expert analysis.`
 
-    const { text: advice, modelUsed } = await generateWithFallback(systemPrompt, userPrompt)
+    const { text: advice, modelUsed } = await generateWithModelPreference(systemPrompt, userPrompt, model)
 
     return { analysis, advice, modelUsed }
   } catch (error) {
@@ -451,16 +521,17 @@ Provide ultra-concise expert analysis.`
 // Add a new function for detailed analysis
 export async function getDetailedPortfolioAnalysis(
   user: AuthUser,
+  model: string = 'auto',
 ): Promise<{ analysis: PortfolioAnalysis; advice: string; modelUsed: string }> {
   try {
     // Get user's portfolio (same as analyzePortfolioWithAI)
     const portfolioItems = await getUserPortfolio(user)
-    const { coins: allCoins } = await fetchCoins()
+    const allCoins = await getAllCoinsFromBunny()
 
     // Enrich portfolio with current market data
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
+      const beatScore = coinData ? getHealthScore(coinData) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
       const priceChange24h = coinData?.price_change_24h || 0
 
@@ -638,7 +709,7 @@ HISTORICAL DATA ACCESS:
 
 Provide comprehensive analysis with specific actionable recommendations, concrete percentages, and detailed insights for each section.`
 
-    const { text: advice, modelUsed } = await generateWithFallback(detailedSystemPrompt, detailedUserPrompt)
+    const { text: advice, modelUsed } = await generateWithModelPreference(detailedSystemPrompt, detailedUserPrompt, model)
 
     return { analysis, advice, modelUsed }
   } catch (error) {
@@ -655,11 +726,11 @@ export async function chatWithPortfolioBot(
   try {
     // Get current portfolio data for context
     const portfolioItems = await getUserPortfolio(user)
-    const { coins: allCoins } = await fetchCoins()
+    const allCoins = await getAllCoinsFromBunny()
 
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
+      const beatScore = coinData ? getHealthScore(coinData) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
 
       return {

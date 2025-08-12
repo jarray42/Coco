@@ -10,7 +10,6 @@ import type { AuthUser } from "../utils/supabase-auth"
 import { AuthModal } from "./auth-modal"
 import { ElegantDetailedAnalysis } from "./elegant-detailed-analysis"
 import { CompactQuotaDisplay } from "./compact-quota-display"
-import { UpgradeModal } from "./upgrade-modal"
 import { analyzeMarketWithQuota, chatWithMarketBotWithQuota } from "../actions/market-analysis-with-quota"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +29,16 @@ interface ElegantCocoriAIWidgetProps {
   onExpansionChange?: (isExpanded: boolean) => void
   dashboardWidth?: number
 }
+
+const MODEL_OPTIONS = [
+  { value: "auto", label: "Auto (Best)" },
+  { value: "llama-3.1-8b-instant", label: "Groq Llama 3.1 8B" },
+  { value: "openrouter-mistral-small-3.2-24b", label: "Mistral Small 24B" },
+  { value: "openrouter-qwen3-235b-a22b", label: "Qwen3 235B" },
+  { value: "openrouter-gemma-3-27b-it", label: "Gemma 27B" },
+  { value: "openrouter-gpt-4o-mini-2024-07-18", label: "GPT-4o Mini" },
+  { value: "openrouter-gbtoss", label: "GPT OSS 20B" },
+]
 
 export function ElegantCocoriAIWidget({
   user,
@@ -56,12 +65,13 @@ export function ElegantCocoriAIWidget({
   const [showDetailed, setShowDetailed] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [capAnalysisData, setCapAnalysisData] = useState<any>(null)
   const [riskIndicatorsData, setRiskIndicatorsData] = useState<any[]>([])
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [quotaExceededMessage, setQuotaExceededMessage] = useState<string>("")
   const [streamingMessage, setStreamingMessage] = useState("")
+  const [selectedModel, setSelectedModel] = useState("auto")
 
   // Refs for animation
   const widgetRef = useRef<HTMLDivElement>(null)
@@ -74,7 +84,10 @@ export function ElegantCocoriAIWidget({
   const [dashboardOffset, setDashboardOffset] = useState(0)
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }
 
   useEffect(() => {
@@ -88,7 +101,7 @@ export function ElegantCocoriAIWidget({
   const measureDimensions = useCallback(() => {
     if (widgetRef.current) {
       const rect = widgetRef.current.getBoundingClientRect()
-      const dashboardContainer = widgetRef.current.closest(".max-w-\\[90rem\\]")
+      const dashboardContainer = widgetRef.current.closest("[class*='max-w-[']")
 
       if (dashboardContainer) {
         const dashboardRect = dashboardContainer.getBoundingClientRect()
@@ -144,7 +157,6 @@ export function ElegantCocoriAIWidget({
   )
 
   const handleQuotaError = (error: any) => {
-    setShowUpgradeModal(true)
     setQuotaExceededMessage(
       "You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month."
     )
@@ -164,7 +176,7 @@ export function ElegantCocoriAIWidget({
         console.warn("[DEBUG] analyzeMarketWithQuota is taking longer than 5 seconds...")
       }, 5000)
 
-      const result = await analyzeMarketWithQuota(user, false)
+      const result = await analyzeMarketWithQuota(user, false, selectedModel)
       if (timeoutId) clearTimeout(timeoutId)
       console.log("[DEBUG] analyzeMarketWithQuota result:", result)
 
@@ -195,7 +207,7 @@ export function ElegantCocoriAIWidget({
 
     setDetailedLoading(true)
     try {
-      const result = await analyzeMarketWithQuota(user, true)
+      const result = await analyzeMarketWithQuota(user, true, selectedModel)
 
       if ("needUpgrade" in result) {
         handleQuotaError(result)
@@ -245,7 +257,7 @@ export function ElegantCocoriAIWidget({
 
     try {
       // Use robust server action for market chat
-      const result = await chatWithMarketBotWithQuota(user, chatInput)
+      const result = await chatWithMarketBotWithQuota(user, chatInput, selectedModel)
       if (result && 'response' in result && typeof result.response === "string") {
         const botMessage: ChatMessage = {
           role: "assistant",
@@ -447,7 +459,20 @@ export function ElegantCocoriAIWidget({
                 <Image src="/ailogo.png" alt="CocoriAI" width={28} height={28} className="drop-shadow-lg" />
                 <span className={`text-sm font-bold ${textClass}`}>CocoriAI</span>
               </div>
-
+              {/* Model select dropdown */}
+              <div className="ml-4">
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className={`rounded-lg px-2 py-1 text-xs font-medium border ${isDarkMode ? "bg-slate-800/70 text-slate-100 border-slate-700" : "bg-white/80 text-slate-900 border-slate-300"}`}
+                  style={{ minWidth: 120 }}
+                  title="Choose AI model"
+                >
+                  {MODEL_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
               {/* Action Buttons */}
               <div className="flex items-center gap-2 ml-auto">
                 <Button
@@ -553,7 +578,7 @@ export function ElegantCocoriAIWidget({
         <div
           ref={panelRef}
           className={`rounded-2xl ${cardClass} backdrop-blur-md shadow-2xl border overflow-hidden transition-all duration-600 ease-out ${
-            isExpanded ? "max-h-[300px]" : "max-h-0"
+            isExpanded ? "max-h-[375px]" : "max-h-0"
           }`}
         >
           {/* Header with Quota and Close */}
@@ -611,17 +636,17 @@ export function ElegantCocoriAIWidget({
           </div>
 
           {/* Content - Reduced height */}
-          <div className="h-56 overflow-y-auto p-4">
+          <div className="h-[315px] overflow-y-auto p-4">
             {quotaExceededMessage && (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
                 <div className="text-2xl mb-2">🐔</div>
                 <div className={`font-semibold text-base mb-2 ${isDarkMode ? "text-amber-300" : "text-amber-700"}`}>Quota Exhausted</div>
                 <div className={`mb-4 text-xs ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>{quotaExceededMessage}</div>
                 <Button
-                  onClick={() => setShowUpgradeModal(true)}
+                  asChild
                   className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-xl px-4 py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  Upgrade Plan
+                  <a href="/plans">Upgrade Plan</a>
                 </Button>
               </div>
             )}
@@ -629,7 +654,7 @@ export function ElegantCocoriAIWidget({
               <>
                 {activeTab === "chat" && (
                   <div className="space-y-3 h-full flex flex-col">
-                    <div className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
+                    <div ref={messagesContainerRef} className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
                       {chatMessages.length === 0 && (
                         <div className="text-center py-6">
                           <div className="relative mb-3">
@@ -651,7 +676,7 @@ export function ElegantCocoriAIWidget({
                       {chatMessages.map((message, index) => (
                         <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                           <div
-                            className={`max-w-[80%] p-2 rounded-xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-lg font-medium ${
+                            className={`max-w-[80%] p-2 rounded-xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-[15px] font-medium ${
                               message.role === "user"
                                 ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white"
                                 : isDarkMode
@@ -861,17 +886,7 @@ export function ElegantCocoriAIWidget({
         </div>
       </div>
 
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        user={user!}
-        isDarkMode={isDarkMode}
-        onUpgradeSuccess={() => {
-          setShowUpgradeModal(false)
-          setQuotaRefreshKey((prev) => prev + 1)
-        }}
-      />
+      {/* Removed old Upgrade Modal usage in favor of inline message + link to /plans */}
 
       {/* Add CSS for blinking cursor */}
       <style jsx global>{`

@@ -16,11 +16,11 @@ export function ConsistencyScoreDisplay({ score, details, isDarkMode, size = "md
 
   // Memoize the silo icon to prevent unnecessary recalculations
   const siloIcon = useMemo(() => {
-    if (score >= 91) return "/consistency-icons/s6.png" // Full silo with sparkles
+    if (score >= 86) return "/consistency-icons/s6.png" // Full silo with sparkles
     if (score >= 71) return "/consistency-icons/s5.png" // High grain level
     if (score >= 51) return "/consistency-icons/s4.png" // Good grain level
     if (score >= 31) return "/consistency-icons/s3.png" // Moderate grain level
-    if (score >= 11) return "/consistency-icons/s2.png" // Low grain level
+    if (score >= 15) return "/consistency-icons/s2.png" // Low grain level
     return "/consistency-icons/s1.png" // Empty silo with spider web
   }, [score])
 
@@ -46,11 +46,11 @@ export function ConsistencyScoreDisplay({ score, details, isDarkMode, size = "md
 
   // Simplified description - only first part
   const siloDescription = useMemo(() => {
-    if (score >= 91) return "Exceptional Consistency"
+    if (score >= 86) return "Exceptional Consistency"
     if (score >= 71) return "High Consistency"
     if (score >= 51) return "Good Consistency"
     if (score >= 31) return "Moderate Consistency"
-    if (score >= 11) return "Low Consistency"
+    if (score >= 15) return "Low Consistency"
     return "Poor Consistency"
   }, [score])
 
@@ -149,7 +149,7 @@ export function ConsistencyScoreDisplay({ score, details, isDarkMode, size = "md
       </div>
 
       {/* Compact Professional Tooltip */}
-      {isVisible && details && (
+      {isVisible && (
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 z-[100] animate-in fade-in-0 zoom-in-95 duration-300">
           <div
             className={`px-4 py-4 rounded-2xl shadow-2xl backdrop-blur-md border transition-all duration-300 w-[180px] ${
@@ -163,61 +163,15 @@ export function ConsistencyScoreDisplay({ score, details, isDarkMode, size = "md
                 : `linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)`,
             }}
           >
-            {/* Header with Large Silo Icon */}
-            <div className="flex flex-col items-center mb-3">
-              <div className="mb-2">
-                <Image
-                  src={siloIcon || "/placeholder.svg"}
-                  alt="Consistency Level"
-                  width={48}
-                  height={48}
-                  className="object-contain drop-shadow-lg"
-                  loading="lazy"
-                  priority={false}
-                />
-              </div>
-              <div className={`text-sm font-semibold text-center ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
-                {siloDescription}
-              </div>
-            </div>
-
-            {/* Progress Bar Right Below Logo */}
-            <div className="mb-4">
-              <div
-                className={`w-3/4 mx-auto h-2 rounded-full ${isDarkMode ? "bg-slate-700" : "bg-slate-200"} relative overflow-hidden shadow-inner`}
-              >
-                <div
-                  className={`h-full rounded-full bg-gradient-to-r ${progressGradient} transition-all duration-500 relative shadow-lg`}
-                  style={{ width: `${score}%` }}
-                >
-                  {/* Enhanced Shiny overlay effect based on score */}
-                  <div
-                    className={`absolute inset-0 bg-gradient-to-r from-transparent ${shineIntensity} to-transparent animate-pulse`}
-                  />
-                  {/* Additional shine sweep for high scores */}
-                  {score >= 70 && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent animate-ping opacity-30" />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Compact Activity Stats */}
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
-                <span className={`${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                  GitHub:{" "}
-                  <span className="font-semibold text-blue-400">{Math.round((details.github_score || 0) * 100)}</span>
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0" />
-                <span className={`${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                  Twitter:{" "}
-                  <span className="font-semibold text-cyan-400">{Math.round((details.twitter_score || 0) * 100)}</span>
-                </span>
+            {/* Meaningful Description */}
+            <div className="text-center">
+              <div className={`text-sm font-semibold ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
+                {score >= 86 ? "Devs delivering consistently" :
+                 score >= 71 ? "Team active and engaged" :
+                 score >= 51 ? "Moderate team activity" :
+                 score >= 31 ? "Intermittent team updates" :
+                 score >= 15 ? "Minimal team activity" :
+                 "Team inactive or silent"}
               </div>
             </div>
 

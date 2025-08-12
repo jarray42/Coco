@@ -1,7 +1,9 @@
 "use server"
 
-import { supabase } from "../utils/supabase"
 import type { CryptoData } from "../utils/beat-calculator"
+
+// Bunny CDN base URL
+const BUNNY_CDN_BASE = "https://cocricoin.b-cdn.net"
 
 export interface CoinHistoryData {
   id: number
@@ -13,128 +15,83 @@ export interface CoinHistoryData {
   github_forks: number | null
   twitter_followers: number | null
   date: string
+  health_score: number | null // Added for health score history
+  consistency_score: number | null // Added for consistency score history
 }
 
-export async function getCoinDetails(coinId: string): Promise<CryptoData | null> {
+
+
+// Function to fetch historical data from Bunny CDN
+async function fetchHistoryFromBunny(coinId: string): Promise<CoinHistoryData[]> {
   try {
-    console.log("Fetching coin details for:", coinId)
-    const { data, error } = await supabase.from("coins").select("*").eq("coingecko_id", coinId).single()
+    // Use the exact file name format you use on Bunny
+    const cacheBuster = `?t=${Math.floor(Date.now() / 60000)}`; // 1-minute cache buster
+    const url = `${BUNNY_CDN_BASE}/price_history/${coinId}.json${cacheBuster}`;
 
-    if (error) {
-      console.error("Error fetching coin details:", error)
-      return null
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Requested-With': 'XMLHttpRequest',
+        'User-Agent': `CoinBeat-History-${Date.now()}`
+      },
+      cache: 'no-store',
+      next: { revalidate: 0 }
+    });
+
+    if (!response.ok) {
+      console.error(`❌ Failed to fetch history for ${coinId}: ${response.statusText}`);
+      return [];
     }
 
-    console.log("Raw coin data from database:", data)
-
-    // Process the data to add public URLs for logos
-    if (data.logo_storage_path) {
-      const baseUrl = "https://ohlwxgwioqeyttxtjlyb.supabase.co/storage/v1/object/public/"
-      data.logo_url = baseUrl + data.logo_storage_path
-    }
-
-    return data
+    const data = await response.json();
+    // Transform the data from the format shown in bitcoin.json
+    return Object.entries(data).map(([date, dayData]: [string, any], idx) => ({
+      id: idx + 1,
+      coingecko_id: coinId,
+      date,
+      price: dayData.price || 0,
+      market_cap: dayData.market_cap || 0,
+      volume_24h: dayData.volume_24h || 0,
+      github_stars: dayData.github_stars || null,
+      github_forks: dayData.github_forks || null,
+      twitter_followers: dayData.twitter_followers || null,
+      health_score: dayData.health_score || null,
+      consistency_score: dayData.consistency_score || null
+    }));
   } catch (error) {
-    console.error("Error in getCoinDetails:", error)
-    return null
+    console.error(`❌ Error fetching history from Bunny CDN for ${coinId}:`, error);
+    return [];
   }
 }
 
 export async function getCoinHistory(coinId: string, days: number = 7): Promise<CoinHistoryData[]> {
   try {
-    // Calculate date range
-    const endDate = new Date()
-    const startDate = new Date()
-    startDate.setDate(endDate.getDate() - days)
+    console.log(`🔄 Fetching ${days} days of history for ${coinId}`)
 
-    const startDateStr = startDate.toISOString().split("T")[0] // Format: YYYY-MM-DD
-    const endDateStr = endDate.toISOString().split("T")[0] // Format: YYYY-MM-DD
-
-    console.log(`Fetching ${days} days of history for ${coinId} from ${startDateStr} to ${endDateStr}`)
-
-    // Try different parameter orders for the function
-    let data, error
-
-    // Try with start_date, end_date order
-    const result1 = await supabase.rpc("get_historical_data", {
-      p_coin_id: coinId,
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
-    })
-
-    if (!result1.error) {
-      console.log(`Found ${result1.data?.length || 0} records from RPC function`)
-      return result1.data || []
+    // Fetch from Bunny CDN only
+    const bunnyHistory = await fetchHistoryFromBunny(coinId)
+    console.log(`📊 Bunny CDN returned ${bunnyHistory.length} records`)
+    
+    if (bunnyHistory.length > 0) {
+      console.log(`✅ Using Bunny CDN data: ${bunnyHistory.length} records`)
+      
+      // Filter to the requested number of days (most recent)
+      const recentHistory = bunnyHistory
+        .filter(item => item.price > 0) // Only include records with valid prices
+        .slice(-days) // Get the most recent 'days' records
+      
+      console.log(`📊 Returning ${recentHistory.length} recent history records from Bunny CDN`)
+      return recentHistory
     }
 
-    // Try with different parameter names
-    const result2 = await supabase.rpc("get_historical_data", {
-      coin_id: coinId,
-      start_date: startDateStr,
-      end_date: endDateStr,
-    })
-
-    if (!result2.error) {
-      console.log(`Found ${result2.data?.length || 0} records from RPC function (variant 2)`)
-      return result2.data || []
-    }
-
-    // Try with positional parameters (original order from your example)
-    const result3 = await supabase.rpc("get_historical_data", [coinId, startDateStr, endDateStr])
-
-    if (!result3.error) {
-      console.log(`Found ${result3.data?.length || 0} records from RPC function (positional)`)
-      return result3.data || []
-    }
-
-    // Fallback 1: Query the price_history table directly
-    console.log("RPC function failed, trying price_history table...")
-    const priceHistoryResult = await supabase
-      .from("price_history")
-      .select("*")
-      .eq("coingecko_id", coinId)
-      .gte("date", startDateStr)
-      .lte("date", endDateStr)
-      .order("date", { ascending: true })
-
-    if (!priceHistoryResult.error && priceHistoryResult.data && priceHistoryResult.data.length > 0) {
-      console.log(`Found ${priceHistoryResult.data.length} records from price_history table`)
-      return priceHistoryResult.data
-    }
-
-    // Fallback 2: Query the crypto_data table
-    console.log("price_history table failed, trying crypto_data table...")
-    const cryptoDataResult = await supabase
-      .from("crypto_data")
-      .select("coingecko_id, price, market_cap, volume_24h, github_stars, github_forks, twitter_followers, scraped_at")
-      .eq("coingecko_id", coinId)
-      .gte("scraped_at", startDate.toISOString())
-      .lte("scraped_at", endDate.toISOString())
-      .order("scraped_at", { ascending: true })
-      .limit(Math.min(days * 10, 200)) // Reasonable limit based on days
-
-    if (!cryptoDataResult.error && cryptoDataResult.data && cryptoDataResult.data.length > 0) {
-      // Transform crypto_data format to match CoinHistoryData interface
-      const transformedData = cryptoDataResult.data.map((item: any, index: number) => ({
-        id: index + 1,
-        coingecko_id: item.coingecko_id,
-        price: item.price || 0,
-        market_cap: item.market_cap || 0,
-        volume_24h: item.volume_24h || 0,
-        github_stars: item.github_stars,
-        github_forks: item.github_forks,
-        twitter_followers: item.twitter_followers,
-        date: item.scraped_at.split('T')[0], // Convert to YYYY-MM-DD format
-      }))
-
-      console.log(`Found ${transformedData.length} records from crypto_data table`)
-      return transformedData
-    }
-
-    console.log("No historical data found in any table")
+    console.log("❌ No historical data found from Bunny CDN")
     return []
   } catch (error) {
-    console.error("Error in getCoinHistory:", error)
+    console.error("❌ Error in getCoinHistory:", error)
     return []
   }
 }

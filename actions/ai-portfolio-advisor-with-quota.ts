@@ -4,9 +4,10 @@ import { checkQuotaLimit, incrementTokenUsage } from "../utils/quota-manager"
 import { analyzePortfolioWithAI, chatWithPortfolioBot, getDetailedPortfolioAnalysis } from "./ai-portfolio-advisor"
 import type { AuthUser } from "../utils/supabase-auth"
 import { getUserPortfolio } from "../utils/portfolio"
-import { fetchCoins } from "../utils/supabase"
+import { getAllCoinsFromBunny } from "./fetch-all-coins-from-bunny"
 import { getHealthScore } from "../utils/beat-calculator"
 import { formatPrice } from "../utils/beat-calculator"
+
 
 interface QuotaError {
   needUpgrade: true
@@ -17,7 +18,7 @@ interface QuotaError {
   }
 }
 
-export async function analyzePortfolioWithQuota(user: AuthUser) {
+export async function analyzePortfolioWithQuota(user: AuthUser, model: string = 'auto') {
   try {
     console.log("Checking quota for portfolio analysis...")
 
@@ -39,7 +40,7 @@ export async function analyzePortfolioWithQuota(user: AuthUser) {
     console.log("Quota check passed, making AI request...")
 
     // Make the AI request
-    const result = await analyzePortfolioWithAI(user)
+    const result = await analyzePortfolioWithAI(user, model)
 
     // Increment usage after successful request
     const incrementSuccess = await incrementTokenUsage(user, 1)
@@ -56,7 +57,7 @@ export async function analyzePortfolioWithQuota(user: AuthUser) {
   }
 }
 
-export async function chatWithPortfolioBotWithQuota(user: AuthUser, message: string, history: any[]) {
+export async function chatWithPortfolioBotWithQuota(user: AuthUser, message: string, history: any[], model: string = 'auto') {
   try {
     // Quota enforcement
     const { canProceed, quota } = await checkQuotaLimit(user, 1)
@@ -71,14 +72,14 @@ export async function chatWithPortfolioBotWithQuota(user: AuthUser, message: str
       } as QuotaError
     }
 
-    // Fetch user's portfolio and current market data
+    // Fetch user's portfolio and current market data from Bunny CDN
     const portfolioItems = await getUserPortfolio(user)
-    const { coins: allCoins } = await fetchCoins()
+    const allCoins = await getAllCoinsFromBunny()
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? getHealthScore(coinData) : 0
+      const beatScore = coinData ? getHealthScore(coinData) : 0 // Uses pre-calculated health_score from Bunny
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
-      // Use pre-calculated consistency score from coin data
+      // Use pre-calculated consistency score from Bunny CDN
       const consistencyScore = coinData?.consistency_score || 0
       return {
         name: item.coin_name,
@@ -102,9 +103,58 @@ export async function chatWithPortfolioBotWithQuota(user: AuthUser, message: str
       ...safeHistory,
       { role: "user", content: message },
     ]
-    // Use your preferred model (Groq, OpenAI, etc.)
-    const model = process.env.GROQ_API_KEY ? require("@ai-sdk/groq").groq("llama-3.1-8b-instant") : require("@ai-sdk/openai").openai("gpt-4o-mini")
-    const { text } = await require("ai").generateText({ model, messages })
+    // Model selection (aligned with market chat)
+    let aiModel
+    let text
+    if (model.startsWith('openrouter-')) {
+      const openRouterModelMap: Record<string, string> = {
+        'openrouter-qwen3-235b-a22b-07-25': 'qwen/qwen3-235b-a22b-07-25',
+        'openrouter-deepseek-r1t2-chimera': 'tngtech/deepseek-r1t2-chimera',
+        'openrouter-mistral-small-3.2-24b': 'mistralai/mistral-small-3.2-24b-instruct',
+        'openrouter-qwen3-4b': 'qwen/qwen3-4b',
+        'openrouter-qwen3-235b-a22b': 'qwen/qwen3-235b-a22b',
+        'openrouter-gemma-3-27b-it': 'google/gemma-3-27b-it',
+        'openrouter-gemini-pro': 'google/gemini-pro',
+        'openrouter-gpt-4o-mini-2024-07-18': 'openai/gpt-4o-mini-2024-07-18',
+        'openrouter-gbtoss': 'openai/gpt-oss-20b:free',
+      }
+      const modelId = openRouterModelMap[model] || 'qwen2-72b-instruct'
+      const apiKey = process.env.OPENROUTER_API_KEY
+      if (!apiKey) throw new Error('OPENROUTER_API_KEY not set')
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+        }),
+      })
+      if (!response.ok) {
+        const errorBody = await response.text()
+        throw new Error(`OpenRouter API error: ${response.status} ${errorBody}`)
+      }
+      const data = await response.json()
+      text = data.choices?.[0]?.message?.content || 'No response from OpenRouter model.'
+    } else {
+      if (model === 'auto' || !model) {
+        aiModel = require("@ai-sdk/groq").groq("llama-3.1-8b-instant")
+      } else if (model === 'llama-3.1-8b-instant') {
+        aiModel = require("@ai-sdk/groq").groq("llama-3.1-8b-instant")
+      } else if (model === 'mixtral-8x7b-32768') {
+        aiModel = require("@ai-sdk/groq").groq("mixtral-8x7b-32768")
+      } else if (model === 'gpt-4o-mini') {
+        aiModel = require("@ai-sdk/openai").openai("gpt-4o-mini")
+      } else if (model === 'claude-3-haiku-20240307') {
+        aiModel = require("@ai-sdk/anthropic").anthropic("claude-3-haiku-20240307")
+      } else {
+        aiModel = require("@ai-sdk/groq").groq("llama-3.1-8b-instant")
+      }
+      const { text: plainText } = await require("ai").generateText({ model: aiModel, messages })
+      text = plainText
+    }
     // Increment usage after successful response
     await incrementTokenUsage(user, 1)
     return {
@@ -120,7 +170,7 @@ export async function chatWithPortfolioBotWithQuota(user: AuthUser, message: str
   }
 }
 
-export async function getDetailedPortfolioAnalysisWithQuota(user: AuthUser) {
+export async function getDetailedPortfolioAnalysisWithQuota(user: AuthUser, model: string = 'auto') {
   try {
     console.log("Checking quota for detailed portfolio analysis...")
 
@@ -142,7 +192,7 @@ export async function getDetailedPortfolioAnalysisWithQuota(user: AuthUser) {
     console.log("Quota check passed, making detailed AI request...")
 
     // Make the AI request
-    const result = await getDetailedPortfolioAnalysis(user)
+    const result = await getDetailedPortfolioAnalysis(user, model)
 
     // Increment usage after successful request
     const incrementSuccess = await incrementTokenUsage(user, 1)

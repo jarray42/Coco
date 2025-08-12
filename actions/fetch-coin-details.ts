@@ -1,9 +1,9 @@
 "use server"
 
-import { supabase } from "../utils/supabase"
 import type { CryptoData } from "../utils/beat-calculator"
 import { safeNumber } from "../utils/beat-calculator"
 import { getCoinHistory } from "./fetch-coin-history"
+import { getCoinByIdFromBunny } from "./fetch-coins-from-bunny"
 
 export interface CoinDetails extends CryptoData {
   beatScore: number
@@ -75,54 +75,31 @@ export async function getCoinDetailsBasic(coinId: string): Promise<CoinDetailsBa
       return cached
     }
 
-    const dbStartTime = Date.now()
-    // Optimized coin lookup - try coingecko_id first, then symbol
-    let { data: coinData, error: coinError } = await supabase
-      .from("coins")
-      .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-      .eq("coingecko_id", coinId)
-      .single()
+    const bunnyStartTime = Date.now()
+    // Get coin data from Bunny.net only
+    let coinData = await getCoinByIdFromBunny(coinId)
 
-    console.log(`📊 [PERF] Database query took ${Date.now() - dbStartTime}ms`)
+    console.log(`📊 [PERF] Bunny.net query took ${Date.now() - bunnyStartTime}ms`)
 
-    // If not found by coingecko_id, try by symbol (case insensitive)
-    if (coinError || !coinData) {
-      console.log(`🔄 [PERF] Trying symbol lookup for: ${coinId}`)
-      const symbolStartTime = Date.now()
-      const { data: coinBySymbol, error: symbolError } = await supabase
-        .from("coins")
-        .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-        .ilike("symbol", coinId)
-        .limit(1)
-        .single()
-
-      console.log(`📊 [PERF] Symbol lookup took ${Date.now() - symbolStartTime}ms`)
-
-      if (!symbolError && coinBySymbol) {
-        coinData = coinBySymbol
-        coinError = null
-      }
-    }
-
-    if (coinError || !coinData) {
-      console.error("❌ [PERF] Coin not found:", coinError)
+    if (!coinData) {
+      console.error("❌ [PERF] Coin not found in Bunny.net")
       return null
     }
 
     console.log(`✅ [PERF] Found coin: ${coinData.name} (${coinData.symbol})`)
 
-    // Use pre-calculated scores from database
+    // Use pre-calculated scores from Bunny CDN
     let beatScore = safeNumber(coinData.health_score, 0)
     let consistencyScore = safeNumber(coinData.consistency_score, 0)
 
-    // Use health score from database only - no fallback calculation
+    // Use health score from Bunny CDN only - no fallback calculation
     if (beatScore === 0) {
-      beatScore = 50 // Default value if not available in database
+      beatScore = 50 // Default value if not available in Bunny CDN
     }
 
-    // Use consistency score from database only - no fallback calculation
+    // Use consistency score from Bunny CDN only - no fallback calculation
     if (consistencyScore === 0) {
-      consistencyScore = 50 // Default value if not available in database
+      consistencyScore = 50 // Default value if not available in Bunny CDN
     }
 
     // Ensure all required fields are properly typed and valid
@@ -195,7 +172,8 @@ export async function getCoinDetails(coinId: string, includeHistory: boolean = t
       console.log(`Fetching comprehensive history for ${basicData.coingecko_id}`)
 
       // Use the dedicated getCoinHistory function which fetches all historical data
-      const historyData = await getCoinHistory(basicData.coingecko_id, 7) // Get 7 days of history
+      // Force fresh fetch by bypassing any potential caching
+      const historyData = await getCoinHistory(basicData.coingecko_id, 7) // Get 7 days of history by default
 
       if (historyData && historyData.length > 0) {
         priceHistory = historyData
@@ -208,70 +186,22 @@ export async function getCoinDetails(coinId: string, includeHistory: boolean = t
             github_stars: item.github_stars,
             github_forks: item.github_forks,
             twitter_followers: item.twitter_followers,
+            health_score: item.health_score, // Pass through health_score for chart
+            consistency_score: item.consistency_score // Pass through consistency_score for chart
           }))
           .filter((item) => item.price > 0)
-          .reverse() // Reverse to show chronological order
+          // Data is already in chronological order (oldest to newest) from Bunny CDN
 
-        console.log(`Found ${priceHistory.length} valid history records with social metrics`)
+        console.log(`✅ Found ${priceHistory.length} valid history records from Bunny CDN`)
       } else {
-        console.log("No historical data found, creating comprehensive mock history...")
-        
-        // If no historical data, create more comprehensive mock history with current data
-        const currentPrice = safeNumber(basicData.price, 0)
-        const currentMarketCap = safeNumber(basicData.market_cap, 0)
-        const currentVolume = safeNumber(basicData.volume_24h, 0)
-        const currentTwitterFollowers = basicData.twitter_followers
-        const currentGithubStars = basicData.github_stars
-        const currentGithubForks = basicData.github_forks
-
-        if (currentPrice > 0) {
-          const now = new Date()
+        console.log("❌ No historical data found from Bunny CDN")
+        // Return empty array instead of creating mock data
           priceHistory = []
-          
-          // Create 7 days of mock data with realistic variations
-          for (let i = 6; i >= 0; i--) {
-            const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-            const variation = 0.95 + (Math.random() * 0.1) // ±5% variation
-            const socialVariation = 0.98 + (Math.random() * 0.04) // ±2% social variation (more stable)
-            
-            priceHistory.push({
-              date: date.toISOString(),
-              price: currentPrice * variation,
-              market_cap: currentMarketCap * variation,
-              volume: currentVolume * (0.8 + Math.random() * 0.4), // ±20% volume variation
-              github_stars: currentGithubStars ? Math.round(currentGithubStars * socialVariation) : null,
-              github_forks: currentGithubForks ? Math.round(currentGithubForks * socialVariation) : null,
-              twitter_followers: currentTwitterFollowers ? Math.round(currentTwitterFollowers * socialVariation) : null,
-            })
-          }
-        }
       }
     } catch (historyError) {
-      console.error("Error fetching price history:", historyError)
-      
-      // Create comprehensive mock data if error occurs
-      const currentPrice = safeNumber(basicData.price, 0)
-      if (currentPrice > 0) {
-        const now = new Date()
+      console.error("❌ Error fetching price history:", historyError)
+      // Return empty array instead of creating mock data
         priceHistory = []
-        
-        // Create 7 days of mock data with social metrics
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000)
-          const variation = 0.95 + (Math.random() * 0.1)
-          const socialVariation = 0.98 + (Math.random() * 0.04)
-          
-          priceHistory.push({
-            date: date.toISOString(),
-            price: currentPrice * variation,
-            market_cap: safeNumber(basicData.market_cap, 0) * variation,
-            volume: safeNumber(basicData.volume_24h, 0) * (0.8 + Math.random() * 0.4),
-            github_stars: basicData.github_stars ? Math.round(basicData.github_stars * socialVariation) : null,
-            github_forks: basicData.github_forks ? Math.round(basicData.github_forks * socialVariation) : null,
-            twitter_followers: basicData.twitter_followers ? Math.round(basicData.twitter_followers * socialVariation) : null,
-          })
-        }
-      }
     }
 
     // Ensure all required fields are properly typed and valid
@@ -371,23 +301,4 @@ export async function prefetchCoinDetails(coinId: string): Promise<void> {
   }
 }
 
-// Helper function to search for coins (for debugging)
-export async function searchCoins(query: string) {
-  try {
-    const { data, error } = await supabase
-      .from("coins")
-      .select("coingecko_id, name, symbol")
-      .or(`coingecko_id.ilike.%${query}%,name.ilike.%${query}%,symbol.ilike.%${query}%`)
-      .limit(10)
 
-    if (error) {
-      console.error("Search error:", error)
-      return []
-    }
-
-    return Array.isArray(data) ? data : []
-  } catch (error) {
-    console.error("Search error:", error)
-    return []
-  }
-}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/utils/supabase'
 import { getHealthScore } from '@/utils/beat-calculator'
+import { getCoinByIdFromBunny } from '@/actions/fetch-coins-from-bunny'
 
 // Import email service dynamically when needed
 async function getEmailService() {
@@ -189,21 +190,17 @@ async function runNotificationMonitoring() {
 
 async function fetchCoinData(coinId: string) {
   try {
-    // Fetch from the correct 'coins' table using coingecko_id with pre-calculated scores
-    const { data: coinData, error } = await supabase
-      .from('coins')
-      .select('*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score')
-      .eq('coingecko_id', coinId)
-      .single()
+    // Fetch from Bunny CDN with pre-calculated scores
+    const coinData = await getCoinByIdFromBunny(coinId)
 
-    if (error || !coinData) {
-      console.log(`⚠️ Coin data not found for ${coinId}:`, error?.message)
+    if (!coinData) {
+      console.log(`⚠️ Coin data not found for ${coinId} in Bunny CDN`)
       return null
     }
 
-    // Use pre-calculated scores from database
+    // Use pre-calculated scores from Bunny CDN
     const healthScore = getHealthScore(coinData)
-    const consistencyScore = coinData.consistency_score || await fetchConsistencyScore(coinId)
+    const consistencyScore = coinData.consistency_score || 50
 
     return {
       ...coinData,
@@ -213,27 +210,6 @@ async function fetchCoinData(coinId: string) {
   } catch (error) {
     console.error(`Error fetching coin data for ${coinId}:`, error)
     return null
-  }
-}
-
-async function fetchConsistencyScore(coinId: string): Promise<number> {
-  try {
-    // Get pre-calculated consistency score from coins table
-    const { data, error } = await supabase
-      .from('coins')
-      .select('consistency_score')
-      .eq('coingecko_id', coinId)
-      .single()
-
-    if (data?.consistency_score !== null && data?.consistency_score !== undefined) {
-      return data.consistency_score
-    }
-
-    // Return default score if not available
-    return 50
-  } catch (error) {
-    console.error(`Error fetching consistency score for ${coinId}:`, error)
-    return 50 // Default neutral score
   }
 }
 

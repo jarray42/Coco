@@ -9,10 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Send, CheckCircle, Moon, Sun, User, Mail, MessageSquare } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { SiteHeader } from "../../components/site-header"
 import { ModernDeFiBackground } from "../../components/modern-defi-background"
 import { AuthModal } from "../../components/auth-modal"
 import { ElegantFooter } from "../../components/elegant-footer"
+import { UserMenu } from "../../components/user-menu"
 import { supabaseAuth } from "../../utils/supabase-auth"
 
 export default function ContactPage() {
@@ -71,89 +73,86 @@ export default function ContactPage() {
     }, 1000)
   }
 
+  const handleSignOut = () => {
+    setUser(null)
+  }
+
   if (isSubmitted) {
     return (
       <div className={`min-h-screen transition-all duration-1000 ${isDarkMode ? "dark" : ""}`}>
         <ModernDeFiBackground isDarkMode={isDarkMode} />
 
-        {/* Header with Sign In */}
-        <div className="relative z-10">
-          <div className="flex justify-between items-center p-6 max-w-7xl mx-auto">
+        <div className="relative z-10 max-w-[90rem] mx-auto p-3 sm:p-4 lg:p-6">
+          {/* Header Layout - Same as Main Page */}
+          <div className="flex flex-col lg:flex-row items-center justify-between mb-8 gap-6">
+            {/* Left: Back Button + Logo */}
             <div className="flex items-center gap-4">
               <Link href="/">
                 <Button
                   variant="outline"
-                  className={`backdrop-blur-md shadow-lg border-0 hover:scale-105 transition-all duration-300 ${
+                  className={`h-10 w-10 p-0 rounded-xl transition-all duration-300 backdrop-blur-md shadow-lg border-0 ${
                     isDarkMode
-                      ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
-                      : "bg-white/80 text-slate-700 hover:bg-white/90"
+                      ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70 hover:text-slate-100 hover:scale-105"
+                      : "bg-white/80 text-slate-700 hover:bg-white/90 hover:text-slate-900 hover:scale-105"
                   }`}
                 >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Dashboard
+                  <ArrowLeft className="w-4 h-4" />
                 </Button>
               </Link>
+              <SiteHeader isMainPage={false} isDarkMode={isDarkMode} />
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* Right: Controls - Same as Main Page */}
+            <div className="flex items-center gap-3">
+              {/* Dark/Light Mode Toggle */}
               <Button
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 variant="outline"
-                size="sm"
-                className={`backdrop-blur-md shadow-lg border-0 hover:scale-105 transition-all duration-300 ${
+                className={`h-10 px-4 rounded-xl transition-all duration-300 backdrop-blur-md shadow-lg border-0 ${
                   isDarkMode
-                    ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
-                    : "bg-white/80 text-slate-700 hover:bg-white/90"
+                    ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70 hover:text-slate-100 hover:scale-105"
+                    : "bg-white/80 text-slate-700 hover:bg-white/90 hover:text-slate-900 hover:scale-105"
                 }`}
               >
-                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {isDarkMode ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+                {isDarkMode ? "Light" : "Dark"}
               </Button>
 
-              {!user && <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />}
-
-              {user && (
-                <div
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md shadow-lg border-0 ${
-                    isDarkMode ? "bg-slate-800/60 text-slate-300" : "bg-white/80 text-slate-700"
-                  }`}
-                >
-                  <User className="w-4 h-4" />
-                  <span className="text-sm">{user.email}</span>
-                </div>
+              {/* Authentication */}
+              {user ? (
+                <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+              ) : (
+                <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
               )}
             </div>
           </div>
 
-          <div className="text-center mb-8">
-            <SiteHeader isMainPage={false} isDarkMode={isDarkMode} />
+          <div className="flex items-center justify-center min-h-[60vh] px-6">
+            <Card
+              className={`w-full max-w-md ${
+                isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-white/80 border-slate-200"
+              } backdrop-blur-md shadow-2xl`}
+            >
+              <CardContent className="p-8 text-center">
+                <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                <h2 className={`text-2xl font-bold mb-2 ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>
+                  Message Sent Successfully!
+                </h2>
+                <p className={`mb-6 ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                  Thank you for contacting us. We'll get back to you within 24 hours.
+                </p>
+                <Link href="/">
+                  <Button className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back to Dashboard
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
           </div>
-        </div>
 
-        <div className="relative z-10 flex items-center justify-center min-h-[60vh] px-6">
-          <Card
-            className={`w-full max-w-md ${
-              isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-white/80 border-slate-200"
-            } backdrop-blur-md shadow-2xl`}
-          >
-            <CardContent className="p-8 text-center">
-              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <h2 className={`text-2xl font-bold mb-2 ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>
-                Message Sent Successfully!
-              </h2>
-              <p className={`mb-6 ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
-                Thank you for contacting us. We'll get back to you within 24 hours.
-              </p>
-              <Link href="/">
-                <Button className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Dashboard
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <ElegantFooter isDarkMode={isDarkMode} />
         </div>
-
-        <ElegantFooter isDarkMode={isDarkMode} />
       </div>
     )
   }
@@ -162,70 +161,67 @@ export default function ContactPage() {
     <div className={`min-h-screen transition-all duration-1000 ${isDarkMode ? "dark" : ""}`}>
       <ModernDeFiBackground isDarkMode={isDarkMode} />
 
-      {/* Header with Sign In - Matching Main Page */}
-      <div className="relative z-10">
-        <div className="flex justify-between items-center p-6 max-w-7xl mx-auto">
+      <div className="relative z-10 max-w-[90rem] mx-auto p-3 sm:p-4 lg:p-6">
+        {/* Header Layout - Same as Main Page */}
+        <div className="flex flex-col lg:flex-row items-center justify-between mb-8 gap-6">
+          {/* Left: Back Button + Logo */}
           <div className="flex items-center gap-4">
             <Link href="/">
               <Button
                 variant="outline"
-                className={`backdrop-blur-md shadow-lg border-0 hover:scale-105 transition-all duration-300 ${
+                className={`h-10 w-10 p-0 rounded-xl transition-all duration-300 backdrop-blur-md shadow-lg border-0 ${
                   isDarkMode
-                    ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
-                    : "bg-white/80 text-slate-700 hover:bg-white/90"
+                    ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70 hover:text-slate-100 hover:scale-105"
+                    : "bg-white/80 text-slate-700 hover:bg-white/90 hover:text-slate-900 hover:scale-105"
                 }`}
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Dashboard
+                <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
+            <SiteHeader isMainPage={false} isDarkMode={isDarkMode} />
           </div>
 
-          <div className="flex items-center gap-4">
+          {/* Right: Controls - Same as Main Page */}
+          <div className="flex items-center gap-3">
+            {/* Dark/Light Mode Toggle */}
             <Button
               onClick={() => setIsDarkMode(!isDarkMode)}
               variant="outline"
-              size="sm"
-              className={`backdrop-blur-md shadow-lg border-0 hover:scale-105 transition-all duration-300 ${
+              className={`h-10 px-4 rounded-xl transition-all duration-300 backdrop-blur-md shadow-lg border-0 ${
                 isDarkMode
-                  ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
-                  : "bg-white/80 text-slate-700 hover:bg-white/90"
+                  ? "bg-slate-800/60 text-slate-300 hover:bg-slate-700/70 hover:text-slate-100 hover:scale-105"
+                  : "bg-white/80 text-slate-700 hover:bg-white/90 hover:text-slate-900 hover:scale-105"
               }`}
             >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDarkMode ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
+              {isDarkMode ? "Light" : "Dark"}
             </Button>
 
-            {!user && <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />}
-
-            {user && (
-              <div
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl backdrop-blur-md shadow-lg border-0 ${
-                  isDarkMode ? "bg-slate-800/60 text-slate-300" : "bg-white/80 text-slate-700"
-                }`}
-              >
-                <User className="w-4 h-4" />
-                <span className="text-sm">{user.email}</span>
-              </div>
+            {/* Authentication */}
+            {user ? (
+              <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
+            ) : (
+              <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
             )}
           </div>
         </div>
 
-        {/* Logo Header - Matching Main Page */}
-        <div className="text-center mb-8">
-          <SiteHeader isMainPage={false} isDarkMode={isDarkMode} />
-        </div>
-      </div>
-
-      {/* Contact Form - Enhanced Design */}
-      <div className="relative z-10 max-w-4xl mx-auto px-6 pb-20">
-        <Card
-          className={`${
-            isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-white/80 border-slate-200"
-          } backdrop-blur-md shadow-2xl`}
-        >
+        {/* Contact Form - Enhanced Design */}
+        <div className="max-w-4xl mx-auto px-6 pb-20">
+          <Card
+            className={`${
+              isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-white/80 border-slate-200"
+            } backdrop-blur-md shadow-2xl`}
+          >
           <CardHeader className="text-center pb-8">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 flex items-center justify-center">
-              <MessageSquare className="w-10 h-10 text-white" />
+            <div className="mx-auto mb-6 flex items-center justify-center">
+              <Image 
+                src="/contact.png"
+                alt="Contact Us"
+                width={200}
+                height={200}
+                style={{ width: '200px', height: '200px' }}
+              />
             </div>
             <CardTitle className={`text-3xl font-bold mb-2 ${isDarkMode ? "text-white" : "text-slate-900"}`}>
               Contact Us
@@ -406,6 +402,7 @@ export default function ContactPage() {
       </div>
 
       <ElegantFooter isDarkMode={isDarkMode} />
+    </div>
     </div>
   )
 }

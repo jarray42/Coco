@@ -192,8 +192,15 @@ export default function TestNotificationsPage() {
     if (!user) return
     
     try {
-      const response = await fetch('/api/notifications/test-trigger', {
-        method: 'POST'
+      const response = await fetch('/api/notifications/monitor', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          force_run: true
+        })
       })
       
       const result = await response.json()
@@ -207,6 +214,11 @@ export default function TestNotificationsPage() {
     } catch (error) {
       alert(`Error: ${error}`)
     }
+  }
+
+  const handleNotificationDeleted = (coinId: string) => {
+    // This will be called when notifications are deleted
+    console.log(`Notification deleted for coin ${coinId} in test notifications page`)
   }
 
   if (showDashboard) {
@@ -223,6 +235,7 @@ export default function TestNotificationsPage() {
             user={user!} 
             isDarkMode={isDarkMode} 
             onClose={() => setShowDashboard(false)}
+            onNotificationDeleted={handleNotificationDeleted}
           />
         </div>
       </div>

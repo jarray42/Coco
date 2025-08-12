@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/utils/supabase'
+import { getCoinByIdFromBunny } from '@/actions/fetch-coins-from-bunny'
+import { getHealthScore } from '@/utils/beat-calculator'
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,17 +39,13 @@ export async function GET(request: NextRequest) {
     if (alerts) {
       for (const alert of alerts) {
         try {
-          // Fetch coin data from your coins table
-          const { data: coinData, error: coinError } = await supabase
-            .from('coins')
-            .select('*')
-            .eq('coingecko_id', alert.coin_id)
-            .single()
+          // Fetch coin data from Bunny CDN
+          const coinData = await getCoinByIdFromBunny(alert.coin_id)
 
-          if (!coinError && coinData) {
-            // Basic health score calculation (simplified)
-            const healthScore = Math.round(Math.random() * 100) // Placeholder
-            const consistencyScore = Math.round(Math.random() * 100) // Placeholder
+          if (coinData) {
+            // Use pre-calculated scores from Bunny CDN
+            const healthScore = getHealthScore(coinData)
+            const consistencyScore = coinData.consistency_score || 50
             
             coinChecks.push({
               alert_id: alert.id,

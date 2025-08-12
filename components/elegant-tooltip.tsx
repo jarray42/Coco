@@ -1,7 +1,7 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
+import React, { useState } from "react"
+import { createPortal } from "react-dom"
 
 interface ElegantTooltipProps {
   children: React.ReactNode
@@ -35,16 +35,57 @@ export function ElegantTooltip({ children, content, position = "top", isDarkMode
     }`,
   }
 
+  // Get the bounding rect of the trigger for portal positioning
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const triggerRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (isVisible && triggerRef.current) {
+      setTriggerRect(triggerRef.current.getBoundingClientRect())
+    }
+  }, [isVisible])
+
+  // Calculate portal style
+  const getPortalStyle = () => {
+    if (!triggerRect) return { display: 'none' }
+    let style: React.CSSProperties = { position: 'fixed', zIndex: 99999 }
+    switch (position) {
+      case 'top':
+        style.left = triggerRect.left + triggerRect.width / 2
+        style.top = triggerRect.top
+        style.transform = 'translate(-50%, -100%)'
+        break
+      case 'bottom':
+        style.left = triggerRect.left + triggerRect.width / 2
+        style.top = triggerRect.bottom
+        style.transform = 'translate(-50%, 0)'
+        break
+      case 'left':
+        style.left = triggerRect.left
+        style.top = triggerRect.top + triggerRect.height / 2
+        style.transform = 'translate(-100%, -50%)'
+        break
+      case 'right':
+        style.left = triggerRect.right
+        style.top = triggerRect.top + triggerRect.height / 2
+        style.transform = 'translate(0, -50%)'
+        break
+      default:
+        break
+    }
+    return style
+  }
+
   return (
     <div
       className="relative inline-block"
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
+      ref={triggerRef}
     >
       {children}
-
-      {isVisible && (
-        <div className={`absolute ${positionClasses[position]} z-50 animate-in fade-in-0 zoom-in-95 duration-200`}>
+      {isVisible && typeof window !== 'undefined' && createPortal(
+        <div style={getPortalStyle()}>
           <div
             className={`px-4 py-3 rounded-2xl shadow-xl backdrop-blur-md border transition-all duration-300 ${
               isDarkMode
@@ -55,7 +96,8 @@ export function ElegantTooltip({ children, content, position = "top", isDarkMode
             {content}
             <div className={arrowClasses[position]} />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

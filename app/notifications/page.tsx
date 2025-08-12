@@ -55,7 +55,13 @@ export default function NotificationsPage() {
   }
 
   const handleBack = () => {
-    router.back()
+    router.push("/")
+  }
+
+  const handleNotificationDeleted = (coinId: string) => {
+    // This will be called when notifications are deleted
+    // The main dashboard will also receive the event and invalidate its cache
+    console.log(`Notification deleted for coin ${coinId} in notifications page`)
   }
 
   if (loading) {
@@ -124,6 +130,7 @@ export default function NotificationsPage() {
         <NotificationDashboard 
           user={user} 
           isDarkMode={isDarkMode}
+          onNotificationDeleted={handleNotificationDeleted}
         />
       </div>
     </div>

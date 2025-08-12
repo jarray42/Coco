@@ -4,7 +4,9 @@ import { useState, useEffect } from "react"
 import { ModernDeFiBackground } from "./modern-defi-background"
 import { CoinDetailHeader } from "./coin-detail-header"
 import { CoinHistoryChart } from "./coin-history-chart"
+import { GitHubCombinedChart } from "./github-combined-chart"
 import { SiteHeader } from "./site-header"
+import { ElegantFooter } from "./elegant-footer"
 import type { CryptoData } from "../utils/beat-calculator"
 import type { CoinHistoryData } from "../actions/fetch-coin-history"
 
@@ -23,7 +25,9 @@ interface CoinDetailPageProps {
 export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }: CoinDetailPageProps) {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
-  const [isLoadingHistory, setIsLoadingHistory] = useState(coinHistory.length <= 1)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(coinHistory.length === 0)
+  const [historyPeriod, setHistoryPeriod] = useState<7 | 30>(7)
+  const [currentCoinHistory, setCurrentCoinHistory] = useState<CoinHistoryData[]>(coinHistory)
 
   useEffect(() => {
     // Get initial user
@@ -43,13 +47,41 @@ export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }
 
   // Check if we have sufficient history data
   useEffect(() => {
-    if (coinHistory.length > 1) {
+    if (coinHistory.length > 0) {
       setIsLoadingHistory(false)
+      setCurrentCoinHistory(coinHistory)
+    } else {
+      setIsLoadingHistory(true)
+      setCurrentCoinHistory([])
     }
   }, [coinHistory])
 
   const handleSignOut = () => {
     setUser(null)
+  }
+
+  const handleHistoryPeriodChange = async (period: 7 | 30) => {
+    if (period === historyPeriod) return
+    
+    setHistoryPeriod(period)
+    setIsLoadingHistory(true)
+    
+    try {
+      // Fetch new history data from Bunny CDN
+      const response = await fetch(`/api/coin-history?coinId=${coin.coingecko_id}&days=${period}`)
+      if (response.ok) {
+        const data = await response.json()
+        setCurrentCoinHistory(data.history || [])
+      } else {
+        console.error('Failed to fetch history data')
+        setCurrentCoinHistory([])
+      }
+    } catch (error) {
+      console.error('Error fetching history data:', error)
+      setCurrentCoinHistory([])
+    } finally {
+      setIsLoadingHistory(false)
+    }
   }
 
   return (
@@ -80,8 +112,45 @@ export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }
 
         <CoinDetailHeader coin={coin} beatScore={beatScore} consistencyData={consistencyData} isDarkMode={isDarkMode} />
 
-        {/* Health Score - Top Priority */}
-        <div className="mb-6">
+        {/* History Period Toggle */}
+        <div className="flex justify-end mb-4">
+          <div className={`flex rounded-xl p-1 backdrop-blur-md shadow-lg border ${
+            isDarkMode ? "bg-slate-800/60 border-slate-700/50" : "bg-white/80 border-slate-200/50"
+          }`}>
+            <button
+              onClick={() => handleHistoryPeriodChange(7)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                historyPeriod === 7
+                  ? isDarkMode
+                    ? "bg-slate-700 text-slate-100 shadow-md"
+                    : "bg-white text-slate-900 shadow-md"
+                  : isDarkMode
+                    ? "text-slate-300 hover:text-slate-100"
+                    : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              7 Days
+            </button>
+            <button
+              onClick={() => handleHistoryPeriodChange(30)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                historyPeriod === 30
+                  ? isDarkMode
+                    ? "bg-slate-700 text-slate-100 shadow-md"
+                    : "bg-white text-slate-900 shadow-md"
+                  : isDarkMode
+                    ? "text-slate-300 hover:text-slate-100"
+                    : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              30 Days
+            </button>
+          </div>
+        </div>
+
+        {/* Health Score & Market Cap Charts Side by Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          {/* Health Score Chart */}
           {isLoadingHistory ? (
             <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
               isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
@@ -91,13 +160,53 @@ export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }
                 <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>Loading price history...</p>
               </div>
             </div>
+          ) : currentCoinHistory.length === 0 ? (
+            <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
+              isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
+            }`}>
+              <div className="text-center">
+                <div className="text-4xl mb-2">📊</div>
+                <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>No historical data available</p>
+                <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>Historical data will appear here when available</p>
+              </div>
+            </div>
           ) : (
             <CoinHistoryChart
-              historyData={coinHistory}
+              historyData={currentCoinHistory}
               isDarkMode={isDarkMode}
               metric="health_score"
               title="Health Score History"
               color={isDarkMode ? "#22c55e" : "#16a34a"}
+            />
+          )}
+
+          {/* Market Cap Chart */}
+          {isLoadingHistory ? (
+            <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
+              isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
+            }`}>
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>Loading market cap...</p>
+              </div>
+            </div>
+          ) : currentCoinHistory.length === 0 ? (
+            <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
+              isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
+            }`}>
+              <div className="text-center">
+                <div className="text-4xl mb-2">📊</div>
+                <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>No market cap data</p>
+                <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>Market cap data will appear here when available</p>
+              </div>
+            </div>
+          ) : (
+            <CoinHistoryChart
+              historyData={currentCoinHistory}
+              isDarkMode={isDarkMode}
+              metric="market_cap"
+              title="Market Capitalization"
+              color={isDarkMode ? "#8b5cf6" : "#a855f7"}
             />
           )}
         </div>
@@ -123,62 +232,38 @@ export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }
                 </div>
               </div>
             </>
+          ) : currentCoinHistory.length === 0 ? (
+            <>
+              <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
+                isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
+              }`}>
+                <div className="text-center">
+                  <div className="text-2xl mb-1">📊</div>
+                  <p className={`text-xs ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>No data</p>
+                </div>
+              </div>
+              <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
+                isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
+              }`}>
+                <div className="text-center">
+                  <div className="text-2xl mb-1">📊</div>
+                  <p className={`text-xs ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>No data</p>
+                </div>
+              </div>
+            </>
           ) : (
             <>
               <CoinHistoryChart
-                historyData={coinHistory}
+                historyData={currentCoinHistory}
                 isDarkMode={isDarkMode}
                 metric="twitter_followers"
                 title="Twitter Followers"
                 color={isDarkMode ? "#3b82f6" : "#2563eb"}
               />
-              <CoinHistoryChart
-                historyData={coinHistory}
+              <GitHubCombinedChart
+                historyData={currentCoinHistory}
                 isDarkMode={isDarkMode}
-                metric="github_stars"
-                title="GitHub Stars"
-                color={isDarkMode ? "#f59e0b" : "#d97706"}
-              />
-            </>
-          )}
-        </div>
-
-        {/* Development Metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          {isLoadingHistory ? (
-            <>
-              <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
-                isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
-              }`}>
-                <div className="text-center">
-                  <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className={`text-xs ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>Loading...</p>
-                </div>
-              </div>
-              <div className={`h-64 rounded-2xl border backdrop-blur-sm flex items-center justify-center ${
-                isDarkMode ? "bg-slate-800/40 border-slate-700/50" : "bg-white/70 border-sky-200/50"
-              }`}>
-                <div className="text-center">
-                  <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className={`text-xs ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>Loading...</p>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <CoinHistoryChart
-                historyData={coinHistory}
-                isDarkMode={isDarkMode}
-                metric="github_forks"
-                title="GitHub Forks"
-                color={isDarkMode ? "#10b981" : "#059669"}
-              />
-              <CoinHistoryChart
-                historyData={coinHistory}
-                isDarkMode={isDarkMode}
-                metric="volume_24h"
-                title="24h Trading Volume"
-                color={isDarkMode ? "#ec4899" : "#db2777"}
+                title="GitHub Activity"
               />
             </>
           )}
@@ -208,69 +293,29 @@ export function CoinDetailPage({ coin, coinHistory, beatScore, consistencyData }
           ) : (
             <>
               <CoinHistoryChart
-                historyData={coinHistory}
+                historyData={currentCoinHistory}
+                isDarkMode={isDarkMode}
+                metric="volume_24h"
+                title="24h Trading Volume"
+                color={isDarkMode ? "#ec4899" : "#db2777"}
+              />
+              <CoinHistoryChart
+                historyData={currentCoinHistory}
                 isDarkMode={isDarkMode}
                 metric="price"
                 title="Price History"
                 color={isDarkMode ? "#3b82f6" : "#0ea5e9"}
               />
-              <CoinHistoryChart
-                historyData={coinHistory}
-                isDarkMode={isDarkMode}
-                metric="market_cap"
-                title="Market Capitalization"
-                color={isDarkMode ? "#8b5cf6" : "#a855f7"}
-              />
             </>
           )}
         </div>
 
-        <div
-          className={`p-4 rounded-2xl backdrop-blur-md shadow-lg mt-6 border ${
-            isDarkMode ? "bg-slate-800/50 border-slate-700/30" : "bg-white/80 border-slate-200/50"
-          }`}
-        >
-          <h3 className={`text-base font-semibold mb-3 ${isDarkMode ? "text-slate-200" : "text-slate-800"}`}>
-            About {coin.name}
-          </h3>
-          <p className={`${isDarkMode ? "text-slate-300" : "text-slate-600"} leading-relaxed text-sm`}>
-            {coin.name} ({coin.symbol}) is currently ranked #{coin.rank} by market cap. The coin has a health score of{" "}
-            {Math.round(beatScore)}/100 based on its market activity, developer engagement, and community metrics.
-          </p>
-          <div className="mt-4">
-            <h4 className={`text-sm font-semibold mb-2 ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-              Key Metrics
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <ul className={`space-y-1 ${isDarkMode ? "text-slate-300" : "text-slate-600"} text-sm`}>
-                <li className="flex justify-between">
-                  <span>GitHub Stars:</span>
-                  <span className="font-semibold">
-                    {coin.github_stars ? coin.github_stars.toLocaleString() : "N/A"}
-                  </span>
-                </li>
-                <li className="flex justify-between">
-                  <span>GitHub Forks:</span>
-                  <span className="font-semibold">
-                    {coin.github_forks ? coin.github_forks.toLocaleString() : "N/A"}
-                  </span>
-                </li>
-              </ul>
-              <ul className={`space-y-1 ${isDarkMode ? "text-slate-300" : "text-slate-600"} text-sm`}>
-                <li className="flex justify-between">
-                  <span>Twitter Followers:</span>
-                  <span className="font-semibold">
-                    {coin.twitter_followers ? coin.twitter_followers.toLocaleString() : "N/A"}
-                  </span>
-                </li>
-                <li className="flex justify-between">
-                  <span>24h Volume:</span>
-                  <span className="font-semibold">${coin.volume_24h ? coin.volume_24h.toLocaleString() : "N/A"}</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
+        {/* Additional Market Metrics */}
+        {/* Removed the separate full-width market cap chart section as it is now beside health score */}
+
+
+        {/* Elegant Footer */}
+        <ElegantFooter isDarkMode={isDarkMode} />
       </div>
     </div>
   )

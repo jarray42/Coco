@@ -4,6 +4,9 @@ import { getCoinDetailsBasic, getCoinDetails } from "../../../actions/fetch-coin
 import { CoinDetailPage } from "../../../components/coin-detail-page"
 import { CoinDetailSkeleton } from "../../../components/coin-detail-skeleton"
 
+// Removed purgeCoinPriceHistory and smartPurgeCoinPriceHistory functions
+// Removed cache purge logic
+
 interface CoinPageProps {
   params: Promise<{
     id: string
@@ -13,8 +16,8 @@ interface CoinPageProps {
 // Enhanced cache with better TTL and error handling
 const coinDetailsCache = new Map<string, { data: any; timestamp: number; ttl: number }>()
 
-// Cache TTL: 10 minutes
-const CACHE_TTL = 10 * 60 * 1000
+// Cache TTL: 2 minutes (reduced for more frequent updates)
+const CACHE_TTL = 2 * 60 * 1000
 
 function getCachedCoinDetails(coinId: string) {
   const cached = coinDetailsCache.get(coinId)
@@ -54,6 +57,7 @@ export default async function CoinPage({ params }: CoinPageProps) {
   const { id } = await params
   
   console.log(`🚀 [PAGE] Starting coin page for: ${id}`)
+  console.log(`🔍 [PAGE] Coin ID type: ${typeof id}, length: ${id.length}`)
   
   // Check cache first
   let coinDetails = getCachedCoinDetails(id)
@@ -63,7 +67,7 @@ export default async function CoinPage({ params }: CoinPageProps) {
       console.log(`📊 [PAGE] Cache miss, fetching data for: ${id}`)
       const fetchStartTime = Date.now()
       
-      // Use full version with price history for complete data
+      // Directly fetch coin details (no purge)
       coinDetails = await getCoinDetails(id)
       
       console.log(`📊 [PAGE] Data fetch took ${Date.now() - fetchStartTime}ms`)
@@ -99,18 +103,10 @@ export default async function CoinPage({ params }: CoinPageProps) {
         github_stars: item.github_stars,
         github_forks: item.github_forks,
         twitter_followers: item.twitter_followers,
+        health_score: item.health_score, // Pass through health_score for chart
+        consistency_score: item.consistency_score // Pass through consistency_score for chart
       }))
-    : [{
-        id: 1,
-        coingecko_id: coinDetails.coingecko_id,
-        date: new Date().toISOString(),
-        price: coinDetails.price,
-        market_cap: coinDetails.market_cap,
-        volume_24h: coinDetails.volume_24h,
-        github_stars: coinDetails.github_stars,
-        github_forks: coinDetails.github_forks,
-        twitter_followers: coinDetails.twitter_followers,
-      }]
+    : [] // Return empty array if no history data available
 
   const consistencyData = {
     github_frequency: Math.round((coinDetails.github_stars || 0) / 1000),

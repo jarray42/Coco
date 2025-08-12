@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/utils/supabase"
 import { getHealthScore, formatPrice } from "@/utils/beat-calculator"
 import { getUserPortfolio } from "@/utils/portfolio"
-import { fetchCoins } from "@/actions/fetch-coins"
+import { getAllCoinsFromBunny } from "@/actions/fetch-all-coins-from-bunny"
 import { type AuthUser } from "@/utils/supabase-auth"
 import { streamText } from "ai"
 import { checkQuotaLimit, incrementTokenUsage } from "@/utils/quota-manager"
@@ -56,10 +56,10 @@ export async function POST(req: NextRequest) {
     }
     // Fetch user's portfolio and current market data
     const portfolioItems = await getUserPortfolio(user)
-    const { coins: allCoins } = await fetchCoins()
+    const allCoins = await getAllCoinsFromBunny()
     const enrichedPortfolio = portfolioItems.map((item) => {
       const coinData = allCoins.find((coin) => coin.coingecko_id === item.coingecko_id)
-      const beatScore = coinData ? getHealthScore(mapCoinDataToCryptoData(coinData)) : 0
+      const beatScore = coinData ? getHealthScore(coinData) : 0
       const totalValue = coinData && item.amount ? coinData.price * item.amount : 0
       return {
         name: item.coin_name,

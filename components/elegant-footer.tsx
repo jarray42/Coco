@@ -57,10 +57,10 @@ export function ElegantFooter({ isDarkMode }: ElegantFooterProps) {
             Contact us
           </Link>
           <Link
-            href="/about"
+            href="/disclaimer"
             className={`text-sm font-bold transition-colors duration-300 hover:text-yellow-500 ${textClass}`}
           >
-            About us
+            Disclaimer
           </Link>
           <Link
             href="/faqs"

@@ -10,7 +10,6 @@ import Image from "next/image"
 import { formatPrice } from "../utils/beat-calculator"
 import type { AuthUser } from "../utils/supabase-auth"
 import { chatWithPortfolioBotWithQuota, analyzePortfolioWithQuota, getDetailedPortfolioAnalysisWithQuota } from "../actions/ai-portfolio-advisor-with-quota"
-import { UpgradeModal } from "./upgrade-modal"
 import { CompactQuotaDisplay } from "./compact-quota-display"
 import { getUserQuota } from "../utils/quota-manager"
 
@@ -25,12 +24,15 @@ interface ElegantAIPortfolioAdvisorProps {
   isDarkMode: boolean
 }
 
-// Add provider options
-const PROVIDER_OPTIONS = [
-  { value: "auto", label: "Best (Auto)" },
-  { value: "groq", label: "Groq" },
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
+// Match main page AI model options
+const MODEL_OPTIONS = [
+  { value: "auto", label: "Auto (Best)" },
+  { value: "llama-3.1-8b-instant", label: "Groq Llama 3.1 8B" },
+  { value: "openrouter-mistral-small-3.2-24b", label: "Mistral Small 24B" },
+  { value: "openrouter-qwen3-235b-a22b", label: "Qwen3 235B" },
+  { value: "openrouter-gemma-3-27b-it", label: "Gemma 27B" },
+  { value: "openrouter-gpt-4o-mini-2024-07-18", label: "GPT-4o Mini" },
+  { value: "openrouter-gbtoss", label: "GPT OSS 20B" },
 ]
 
 export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfolioAdvisorProps) {
@@ -43,6 +45,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
   const [expandedSection, setExpandedSection] = useState<"none" | "chat" | "analysis">("none")
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
 
   // Add state for detailed analysis
   const [showDetailed, setShowDetailed] = useState(false)
@@ -54,12 +57,14 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
 
   const [provider, setProvider] = useState("auto")
   const [streamingMessage, setStreamingMessage] = useState("")
-  // Local state for chat quota modal
-  const [showChatUpgradeModal, setShowChatUpgradeModal] = useState(false)
   const [chatQuotaInfo, setChatQuotaInfo] = useState<any>(null)
+  const [quotaExceededMessage, setQuotaExceededMessage] = useState("")
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }
 
   useEffect(() => {
@@ -83,10 +88,10 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
     setExpandedSection("analysis")
     setShowDetailed(false)
     try {
-      const result = await analyzePortfolioWithQuota(user)
+      const result = await analyzePortfolioWithQuota(user, provider)
       if (result && 'needUpgrade' in result && result.needUpgrade) {
         setChatQuotaInfo(result.quota)
-        setShowChatUpgradeModal(true)
+        setQuotaExceededMessage("You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month.")
         setLoading(false)
         return
       }
@@ -106,10 +111,10 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
   const handleDetailedAnalysis = async () => {
     setLoading(true)
     try {
-      const result = await getDetailedPortfolioAnalysisWithQuota(user)
+      const result = await getDetailedPortfolioAnalysisWithQuota(user, provider)
       if (result && 'needUpgrade' in result && result.needUpgrade) {
         setChatQuotaInfo(result.quota)
-        setShowChatUpgradeModal(true)
+        setQuotaExceededMessage("You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month.")
         setLoading(false)
         return
       }
@@ -151,7 +156,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
     setTimeout(() => { chatInputRef.current?.focus(); }, 0)
 
     try {
-      const result = await chatWithPortfolioBotWithQuota(user, chatInput, chatMessages)
+      const result = await chatWithPortfolioBotWithQuota(user, chatInput, chatMessages, provider)
       if (result && 'response' in result && typeof result.response === "string") {
         const botMessage: ChatMessage = {
           role: "assistant",
@@ -162,7 +167,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
         setQuotaRefreshKey((prev) => prev + 1)
       } else if (result && 'needUpgrade' in result && result.needUpgrade) {
         setChatQuotaInfo(result.quota)
-        setShowChatUpgradeModal(true)
+        setQuotaExceededMessage("You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month.")
       } else {
         setChatMessages((prev) => [...prev, {
           role: "assistant",
@@ -368,6 +373,19 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
         {expandedSection === "chat" && (
           <div className="p-4 max-h-[600px] overflow-y-auto">
             <div className="space-y-3">
+              {quotaExceededMessage && (
+                <div className="flex flex-col items-center justify-center text-center p-6">
+                  <div className="text-2xl mb-2">🐔</div>
+                  <div className={`font-semibold text-base mb-2 ${isDarkMode ? "text-amber-300" : "text-amber-700"}`}>Quota Exhausted</div>
+                  <div className={`mb-4 text-xs ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>{quotaExceededMessage}</div>
+                  <Button asChild className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-xl px-4 py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                    <a href="/plans">Upgrade Plan</a>
+                  </Button>
+                </div>
+              )}
+
+              {!quotaExceededMessage && (
+                <>
               {/* Provider Selector */}
               <div className="flex items-center gap-2 mb-2">
                 <label htmlFor="provider-select" className={`text-xs font-medium ${mutedTextClass}`}>AI Provider:</label>
@@ -377,14 +395,14 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                   onChange={e => setProvider(e.target.value)}
                   className={`rounded px-2 py-1 text-xs ${isDarkMode ? "bg-slate-700/50 text-slate-100" : "bg-white text-slate-900"}`}
                 >
-                  {PROVIDER_OPTIONS.map(opt => (
+                  {MODEL_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
               </div>
 
               {/* Chat Messages - Reduced height */}
-              <div className={`h-64 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
+              <div ref={messagesContainerRef} className={`h-64 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
                 {chatMessages.length === 0 && (
                   <div className="text-center py-8">
                     <div className="relative mb-4">
@@ -408,7 +426,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                 {chatMessages.map((message, index) => (
                   <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-[80%] p-4 rounded-2xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-xl font-semibold ${
+                      className={`max-w-[80%] p-4 rounded-2xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-[13px] font-medium ${
                         message.role === "user"
                           ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white"
                           : isDarkMode
@@ -437,7 +455,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                 {/* Show streaming message if present */}
                 {streamingMessage && (
                   <div className="flex justify-start">
-                    <div className={`p-4 rounded-2xl font-sans font-[Inter,system-ui,sans-serif] text-base font-medium ${isDarkMode ? "bg-slate-700/50" : "bg-white border border-slate-200/50"} shadow-lg animate-pulse flex items-center`}>
+                    <div className={`p-4 rounded-2xl font-sans font-[Inter,system-ui,sans-serif] text-[13px] font-medium ${isDarkMode ? "bg-slate-700/50" : "bg-white border border-slate-200/50"} shadow-lg animate-pulse flex items-center`}>
                       <div className="whitespace-pre-wrap leading-relaxed">{streamingMessage}
                         <span className="blinking-cursor-block ml-1">█</span>
                       </div>
@@ -467,6 +485,8 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -474,7 +494,17 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
         {/* Analysis Section */}
         {expandedSection === "analysis" && (
           <div className="p-4 max-h-[600px] overflow-y-auto">
-            {!analysis && !loading && (
+            {quotaExceededMessage && (
+              <div className="flex flex-col items-center justify-center text-center p-6">
+                <div className="text-2xl mb-2">🐔</div>
+                <div className={`${isDarkMode ? "text-amber-300" : "text-amber-700"} font-semibold text-base mb-2`}>Quota Exhausted</div>
+                <div className={`${isDarkMode ? "text-slate-300" : "text-slate-700"} mb-4 text-xs`}>{quotaExceededMessage}</div>
+                <Button asChild className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-xl px-4 py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                  <a href="/plans">Upgrade Plan</a>
+                </Button>
+              </div>
+            )}
+            {!quotaExceededMessage && !analysis && !loading && (
               <div className="text-center py-8">
                 <div className="relative mb-6">
                   <div className="absolute inset-0 bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full blur-lg opacity-20 animate-pulse"></div>
@@ -508,7 +538,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
               </div>
             )}
 
-            {analysis && (
+            {!quotaExceededMessage && analysis && (
               <div className="space-y-4">
                 {/* Compact Stats Grid - 5 items in one row */}
                 <div className="grid grid-cols-5 gap-3">
@@ -880,14 +910,7 @@ export function ElegantAIPortfolioAdvisor({ user, isDarkMode }: ElegantAIPortfol
         )}
       </div>
 
-      {/* Upgrade Modal - Only shows when quota exceeded */}
-      <UpgradeModal
-        isOpen={showChatUpgradeModal}
-        onClose={() => { setShowChatUpgradeModal(false); setChatQuotaInfo(null); }}
-        user={user}
-        isDarkMode={isDarkMode}
-        onUpgradeSuccess={() => { setShowChatUpgradeModal(false); setChatQuotaInfo(null); }}
-      />
+      {/* Removed old Upgrade Modal usage in favor of inline message + link to /plans */}
     </div>
   )
 }

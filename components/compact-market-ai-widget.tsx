@@ -11,7 +11,6 @@ import { AuthModal } from "./auth-modal"
 import { ElegantMarketCapAnalysis } from "./elegant-market-cap-analysis"
 import { ElegantDetailedAnalysis } from "./elegant-detailed-analysis"
 import { CompactQuotaDisplay } from "./compact-quota-display"
-import { UpgradeModal } from "./upgrade-modal"
 import { analyzeMarketWithQuota, chatWithMarketBotWithQuota } from "../actions/market-analysis-with-quota"
 
 interface ChatMessage {
@@ -49,13 +48,17 @@ export function CompactMarketAIWidget({ user, isDarkMode, onAuthSuccess }: Compa
   const [activeTab, setActiveTab] = useState<"chat" | "analysis">("analysis")
   const [showDetailed, setShowDetailed] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [capAnalysisData, setCapAnalysisData] = useState<any>(null)
   const [riskIndicatorsData, setRiskIndicatorsData] = useState<any[]>([])
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [quotaExceededMessage, setQuotaExceededMessage] = useState<string>("")
 
   const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
   }
 
   useEffect(() => {
@@ -63,7 +66,9 @@ export function CompactMarketAIWidget({ user, isDarkMode, onAuthSuccess }: Compa
   }, [chatMessages])
 
   const handleQuotaError = (error: any) => {
-    setShowUpgradeModal(true)
+    setQuotaExceededMessage(
+      error?.message || "You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month."
+    )
   }
 
   const handleToggleExpand = () => {
@@ -380,9 +385,20 @@ export function CompactMarketAIWidget({ user, isDarkMode, onAuthSuccess }: Compa
             {/* Content */}
             {!isMinimized && (
               <div className="h-80 overflow-y-auto p-4">
-                {activeTab === "chat" && (
+                {quotaExceededMessage && (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                    <div className="text-2xl mb-2">🐔</div>
+                    <div className={`${isDarkMode ? "text-amber-300" : "text-amber-700"} font-semibold text-base mb-2`}>Quota Exhausted</div>
+                    <div className={`${isDarkMode ? "text-slate-300" : "text-slate-700"} mb-4 text-xs`}>{quotaExceededMessage}</div>
+                    <Button className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-xl px-4 py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300">
+                      <a href="/plans">Upgrade Plan</a>
+                    </Button>
+                  </div>
+                )}
+
+                {!quotaExceededMessage && activeTab === "chat" && (
                   <div className="space-y-3 h-full flex flex-col">
-                    <div className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
+                     <div ref={messagesContainerRef} className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
                       {chatMessages.length === 0 && (
                         <div className="text-center py-6">
                           <div className="relative mb-3">
@@ -457,7 +473,7 @@ export function CompactMarketAIWidget({ user, isDarkMode, onAuthSuccess }: Compa
                   </div>
                 )}
 
-                {activeTab === "analysis" && (
+                {!quotaExceededMessage && activeTab === "analysis" && (
                   <div className="h-full overflow-y-auto">
                     {!analysis && !loading && (
                       <div className="text-center py-6">
@@ -570,17 +586,7 @@ export function CompactMarketAIWidget({ user, isDarkMode, onAuthSuccess }: Compa
         )}
       </div>
 
-      {/* Upgrade Modal */}
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        user={user!}
-        isDarkMode={isDarkMode}
-        onUpgradeSuccess={() => {
-          setShowUpgradeModal(false)
-          setQuotaRefreshKey((prev) => prev + 1)
-        }}
-      />
+      {/* Removed old Upgrade Modal usage in favor of inline message + link to /plans */}
     </>
   )
 }

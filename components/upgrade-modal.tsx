@@ -65,13 +65,19 @@ export function UpgradeModal({ isOpen, onClose, user, isDarkMode, onUpgradeSucce
     setLoading(planIndex)
 
     try {
+      // Determine if this is a yearly plan based on plan index
+      // Plan 0: Starter Pack (monthly)
+      // Plan 1: Pro Pack (yearly equivalent)
+      // Plan 2: Enterprise Pack (yearly equivalent)
+      const isYearly = planIndex > 0
+
       const response = await fetch("/api/checkout-sessions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          planIndex,
+          isYearly,
           userId: user.id,
         }),
       })

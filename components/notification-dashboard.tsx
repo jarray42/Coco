@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { ElegantScrollBar } from "./elegant-scroll-bar"
 import { useDebounce } from "../hooks/use-debounce"
 import { NotificationPreferences } from "./notification-preferences"
-import { getCoinsByIds } from "../actions/fetch-coins"
+import { getCoinsByIdsFromBunny } from "../actions/fetch-coins-from-bunny"
 import type { AuthUser } from "../utils/supabase-auth"
 
 interface NotificationLog {
@@ -48,9 +48,10 @@ interface NotificationDashboardProps {
   user: AuthUser
   isDarkMode: boolean
   onClose?: () => void
+  onNotificationDeleted?: (coinId: string) => void
 }
 
-export function NotificationDashboard({ user, isDarkMode, onClose }: NotificationDashboardProps) {
+export function NotificationDashboard({ user, isDarkMode, onClose, onNotificationDeleted }: NotificationDashboardProps) {
   const [activeTab, setActiveTab] = useState<'coins' | 'history' | 'preferences'>('coins')
   const [notifications, setNotifications] = useState<NotificationLog[]>([])
   const [alerts, setAlerts] = useState<UserAlert[]>([])
@@ -124,7 +125,7 @@ export function NotificationDashboard({ user, isDarkMode, onClose }: Notificatio
       }
 
       // Load coin data in background - this is slow but UI is already showing
-      const coinsData = await getCoinsByIds(uniqueCoinIds)
+      const coinsData = await getCoinsByIdsFromBunny(uniqueCoinIds)
       
       const coinDataMap: Record<string, any> = {}
       
@@ -293,13 +294,40 @@ export function NotificationDashboard({ user, isDarkMode, onClose }: Notificatio
 
   const deleteAlert = async (alertId: string, coinId: string, alertType: string) => {
     try {
+      console.log(`🗑️ Deleting alert: ${alertId} for coin: ${coinId}, type: ${alertType}`)
+      
       const res = await fetch(`/api/user-alerts?coin_id=${coinId}&alert_type=${alertType}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${user.id}` }
       })
 
       if (res.ok) {
+        console.log(`✅ Alert deleted successfully`)
         setAlerts(alerts.filter(alert => alert.id !== alertId))
+        
+        // Notify parent component
+        if (onNotificationDeleted) {
+          console.log(`📢 Calling onNotificationDeleted callback for coin: ${coinId}`)
+          onNotificationDeleted(coinId)
+        }
+        
+        // Dispatch custom event for cross-page communication
+        console.log(`📡 Dispatching notificationDeleted event for coin: ${coinId}`)
+        const event = new CustomEvent('notificationDeleted', {
+          detail: { coinId, userId: user.id }
+        })
+        window.dispatchEvent(event)
+        
+        // Also dispatch a storage event for other tabs/windows
+        const storageData = {
+          coinId,
+          userId: user.id,
+          timestamp: Date.now()
+        }
+        console.log(`💾 Setting localStorage notificationDeleted:`, storageData)
+        localStorage.setItem('notificationDeleted', JSON.stringify(storageData))
+      } else {
+        console.error(`❌ Failed to delete alert: ${res.status} ${res.statusText}`)
       }
     } catch (err) {
       console.error('Failed to delete alert:', err)
@@ -308,8 +336,11 @@ export function NotificationDashboard({ user, isDarkMode, onClose }: Notificatio
 
   const deleteCoinNotifications = async (coinId: string, coinName: string) => {
     try {
+      console.log(`🗑️ Deleting all notifications for coin: ${coinId} (${coinName})`)
+      
       // Delete all alerts for this coin
       const coinAlerts = alerts.filter(alert => alert.coin_id === coinId)
+      console.log(`📋 Found ${coinAlerts.length} alerts to delete for ${coinId}`)
       
       for (const alert of coinAlerts) {
         await fetch(`/api/user-alerts?coin_id=${coinId}&alert_type=${alert.alert_type}`, {
@@ -334,6 +365,30 @@ export function NotificationDashboard({ user, isDarkMode, onClose }: Notificatio
       // Update local state
       setAlerts(alerts.filter(alert => alert.coin_id !== coinId))
       setNotifications(notifications.filter(notification => notification.coin_id !== coinId))
+      
+      console.log(`✅ All notifications deleted for ${coinName}`)
+      
+      // Notify parent component
+      if (onNotificationDeleted) {
+        console.log(`📢 Calling onNotificationDeleted callback for coin: ${coinId}`)
+        onNotificationDeleted(coinId)
+      }
+      
+      // Dispatch custom event for cross-page communication
+      console.log(`📡 Dispatching notificationDeleted event for coin: ${coinId}`)
+      const event = new CustomEvent('notificationDeleted', {
+        detail: { coinId, userId: user.id }
+      })
+      window.dispatchEvent(event)
+      
+      // Also dispatch a storage event for other tabs/windows
+      const storageData = {
+        coinId,
+        userId: user.id,
+        timestamp: Date.now()
+      }
+      console.log(`💾 Setting localStorage notificationDeleted:`, storageData)
+      localStorage.setItem('notificationDeleted', JSON.stringify(storageData))
       
       console.log(`✅ Deleted all notifications for ${coinName}`)
     } catch (err) {

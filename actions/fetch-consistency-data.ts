@@ -1,6 +1,6 @@
 "use server"
 
-import { supabase } from "../utils/supabase"
+import { getCoinsByIdsFromBunny } from "./fetch-coins-from-bunny"
 
 
 // Optimized batch consistency scores with better caching and error handling
@@ -12,25 +12,13 @@ export async function getBatchConsistencyScores(coinIds: string[]): Promise<Reco
   }
 
   try {
-    console.log(`Fetching consistency data for ${coinIds.length} coins`)
+    console.log(`Fetching consistency data for ${coinIds.length} coins from Bunny CDN`)
     const startTime = Date.now()
 
-    // Fetch pre-calculated consistency scores from the coins table
-    const { data: coinsData, error: coinsError } = await supabase
-      .from("coins")
-      .select("coingecko_id, consistency_score, health_score, twitter_subscore, github_subscore")
-      .in("coingecko_id", coinIds)
+    // Fetch pre-calculated consistency scores from Bunny CDN
+    const coinsData = await getCoinsByIdsFromBunny(coinIds)
 
-    if (coinsError) {
-      console.error("Error fetching consistency data from coins table:", coinsError)
-      // Return default scores instead of failing completely
-      coinIds.forEach((coinId) => {
-        results[coinId] = getDefaultConsistencyResult()
-      })
-      return results
-    }
-
-    console.log(`Fetched ${coinsData?.length || 0} coins with pre-calculated scores in ${Date.now() - startTime}ms`)
+    console.log(`Fetched ${coinsData?.length || 0} coins with pre-calculated scores from Bunny CDN in ${Date.now() - startTime}ms`)
 
     // Create consistency results from pre-calculated scores
     coinIds.forEach((coinId) => {

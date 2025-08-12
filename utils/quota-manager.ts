@@ -6,6 +6,7 @@ export interface UserQuota {
   user_id: string
   tokens_used: number
   monthly_limit: number
+  smart_alerts_limit: number
   billing_plan: string
   created_at: string
   updated_at: string
@@ -38,8 +39,10 @@ export async function createUserQuota(user: AuthUser): Promise<UserQuota | null>
       .from("user_ai_usage")
       .insert({
         user_id: user.id,
+        model_provider: "groq", // <-- Required by schema
         tokens_used: 0,
         monthly_limit: 20, // Free tier limit
+        smart_alerts_limit: 20, // Free tier smart alerts limit
         billing_plan: "free",
         eggs: 10,
       })
@@ -108,12 +111,12 @@ export async function incrementTokenUsage(user: AuthUser, tokensUsed: number): P
 export function getTokenEstimate(analysisType: "basic" | "detailed" | "chat"): number {
   switch (analysisType) {
     case "basic":
-      return 1
+      return 3 // Basic analysis with top 50 coins
     case "detailed":
-      return 2
+      return 5 // Detailed analysis with top 50 coins
     case "chat":
-      return 1
+      return 1 // Chat is usually shorter
     default:
-      return 1
+      return 3
   }
 }

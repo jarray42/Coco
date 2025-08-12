@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { User, Settings, LogOut, Heart, Wallet, Bell } from "lucide-react"
+import { LogOut, Heart, Wallet, Bell } from "lucide-react"
 import { signOut, type AuthUser } from "../utils/supabase-auth"
 
 interface UserMenuProps {
@@ -66,11 +66,6 @@ export function UserMenu({ user, isDarkMode, onSignOut }: UserMenuProps) {
 
         <DropdownMenuSeparator className={isDarkMode ? "bg-slate-700/50" : "bg-slate-200/50"} />
 
-        <DropdownMenuItem className="px-3 py-2 cursor-pointer rounded-lg mx-2 my-1">
-          <User className="w-4 h-4 mr-2" />
-          Profile
-        </DropdownMenuItem>
-
         <DropdownMenuItem asChild className="px-3 py-2 cursor-pointer rounded-lg mx-2 my-1">
           <Link href="/portfolio">
             <Wallet className="w-4 h-4 mr-2" />
@@ -88,11 +83,6 @@ export function UserMenu({ user, isDarkMode, onSignOut }: UserMenuProps) {
         <DropdownMenuItem className="px-3 py-2 cursor-pointer rounded-lg mx-2 my-1">
           <Heart className="w-4 h-4 mr-2" />
           Favorites
-        </DropdownMenuItem>
-
-        <DropdownMenuItem className="px-3 py-2 cursor-pointer rounded-lg mx-2 my-1">
-          <Settings className="w-4 h-4 mr-2" />
-          Settings
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className={isDarkMode ? "bg-slate-700/50" : "bg-slate-200/50"} />

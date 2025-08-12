@@ -9,7 +9,7 @@ export interface CryptoData {
   twitter_url?: string
   twitter_followers?: number | null
   twitter_first_tweet_date?: string
-  github?: string
+  github_url?: string
   github_stars?: number | null
   github_forks?: number | null
   github_last_updated?: string
@@ -20,6 +20,7 @@ export interface CryptoData {
   last_updated: string
   logo_url?: string | null
   logo_storage_path?: string | null
+  first_added_date?: string | null
   // New pre-calculated score fields from database
   health_score?: number | null
   twitter_subscore?: number | null
@@ -54,13 +55,13 @@ export function formatNumber(num: number): string {
   const sign = num < 0 ? "-" : ""
 
   if (absNum >= 1e12) {
-    return sign + (absNum / 1e12).toFixed(1) + "T"
+    return sign + Math.round(absNum / 1e12) + "T"
   } else if (absNum >= 1e9) {
-    return sign + (absNum / 1e9).toFixed(1) + "B"
+    return sign + Math.round(absNum / 1e9) + "B"
   } else if (absNum >= 1e6) {
-    return sign + (absNum / 1e6).toFixed(1) + "M"
+    return sign + Math.round(absNum / 1e6) + "M"
   } else if (absNum >= 1e3) {
-    return sign + (absNum / 1e3).toFixed(1) + "K"
+    return sign + Math.round(absNum / 1e3) + "K"
   } else {
     return sign + absNum.toFixed(0)
   }

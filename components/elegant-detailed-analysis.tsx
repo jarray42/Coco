@@ -11,14 +11,17 @@ interface DetailedAnalysisProps {
 }
 
 const SectionIcon = ({ section }: { section: string }) => {
-  if (section.includes("SENTIMENT")) return <Activity className="w-5 h-5" />
-  if (section.includes("PERFORMERS")) return <TrendingUp className="w-5 h-5" />
-  if (section.includes("HEALTHIEST")) return <Shield className="w-5 h-5" />
-  if (section.includes("OPPORTUNITIES")) return <Target className="w-5 h-5" />
-  if (section.includes("RISK")) return <AlertTriangle className="w-5 h-5" />
-  if (section.includes("MIGRATION")) return <ExternalLink className="w-5 h-5" />
-  if (section.includes("STRATEGIC")) return <Zap className="w-5 h-5" />
-  return <ChevronRight className="w-5 h-5" />
+  const sectionLower = section.toLowerCase()
+  
+  if (sectionLower.includes("sentiment")) return <TrendingUp className="w-5 h-5" />
+  if (sectionLower.includes("performers") || sectionLower.includes("movers")) return <Activity className="w-5 h-5" />
+  if (sectionLower.includes("healthiest") || sectionLower.includes("projects")) return <Shield className="w-5 h-5" />
+  if (sectionLower.includes("opportunities") || sectionLower.includes("gems")) return <Target className="w-5 h-5" />
+  if (sectionLower.includes("risk") || sectionLower.includes("indicators")) return <AlertTriangle className="w-5 h-5" />
+  if (sectionLower.includes("migration") || sectionLower.includes("alerts") || sectionLower.includes("delisting")) return <AlertTriangle className="w-5 h-5" />
+  if (sectionLower.includes("strategic") || sectionLower.includes("recommendations")) return <Zap className="w-5 h-5" />
+  
+  return <TrendingUp className="w-5 h-5" />
 }
 
 const RiskBadge = ({ type, isDarkMode }: { type: string; isDarkMode: boolean }) => {
@@ -66,7 +69,18 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
     let currentSection = { title: "", content: "", items: [] as string[] }
 
     for (const line of lines) {
-      if (line.includes(":") && !line.startsWith("•") && !line.startsWith("-")) {
+      // Check for section headers (including migration alerts)
+      if (
+        (line.includes(":") && !line.startsWith("•") && !line.startsWith("-")) ||
+        line.startsWith("MARKET SENTIMENT") ||
+        line.startsWith("TOP PERFORMERS") ||
+        line.startsWith("HEALTHIEST PROJECTS") ||
+        line.startsWith("LOW-CAP OPPORTUNITIES") ||
+        line.startsWith("RISK INDICATORS") ||
+        line.startsWith("MIGRATION & EXCHANGE ALERTS") ||
+        line.startsWith("MIGRATION & DELISTING ALERTS") ||
+        line.startsWith("STRATEGIC RECOMMENDATIONS")
+      ) {
         // Save previous section
         if (currentSection.title) {
           sections.push({ ...currentSection })
@@ -84,13 +98,18 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
       } else if (line.startsWith("-")) {
         currentSection.items.push(line.replace("-", "").trim())
       } else if (line.length > 0) {
-        currentSection.content += (currentSection.content ? " " : "") + line
+        // For migration alerts, append to content instead of items
+        if (currentSection.title.includes("MIGRATION") || currentSection.title.includes("ALERTS")) {
+          currentSection.content += (currentSection.content ? " " : "") + line
+        } else {
+          currentSection.content += (currentSection.content ? " " : "") + line
+        }
       }
     }
 
     // Add final section
     if (currentSection.title) {
-      sections.push(currentSection)
+      sections.push({ ...currentSection })
     }
 
     return sections
@@ -138,19 +157,23 @@ export function ElegantDetailedAnalysis({ analysis, riskIndicators = [], isDarkM
             <div className="flex items-center gap-3 mb-4">
                 <div
                 className={`p-2 rounded-lg ${
-                  section.title.includes("SENTIMENT")
+                  section.title.toLowerCase().includes("sentiment")
                       ? isDarkMode
                       ? "bg-blue-500/20"
                       : "bg-blue-100"
-                    : section.title.includes("RISK")
+                    : section.title.toLowerCase().includes("risk") || section.title.toLowerCase().includes("indicators")
                       ? (isDarkMode ? "bg-red-500/20" : "bg-red-100")
-                      : section.title.includes("STRATEGIC")
+                      : section.title.toLowerCase().includes("migration") || section.title.toLowerCase().includes("alerts") || section.title.toLowerCase().includes("delisting")
                         ? isDarkMode
-                          ? "bg-purple-500/20"
-                          : "bg-purple-100"
-                        : isDarkMode
-                          ? "bg-green-500/20"
-                          : "bg-green-100"
+                          ? "bg-orange-500/20"
+                          : "bg-orange-100"
+                        : section.title.toLowerCase().includes("strategic") || section.title.toLowerCase().includes("recommendations")
+                          ? isDarkMode
+                            ? "bg-purple-500/20"
+                            : "bg-purple-100"
+                          : isDarkMode
+                            ? "bg-green-500/20"
+                            : "bg-green-100"
                 }`}
               >
                 <SectionIcon section={section.title} />

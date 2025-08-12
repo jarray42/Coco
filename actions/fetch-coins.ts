@@ -2,6 +2,7 @@
 
 import { supabase } from "../utils/supabase"
 import type { CryptoData } from "../utils/beat-calculator"
+import { getCoinsFromBunny } from "./fetch-coins-from-bunny"
 
 // Enhanced coin fetching with better error handling and performance
 export async function getCoinsData(
@@ -18,40 +19,15 @@ export async function getCoinsData(
     const startTime = Date.now()
     const offset = (page - 1) * limit
 
-    // Parallel queries for better performance
-    const [countResult, dataResult] = await Promise.all([
-      // Get total count
-      supabase
-        .from("coins")
-        .select("*", { count: "exact", head: true }),
-      // Get paginated data with all score fields
-      supabase
-        .from("coins")
-        .select("*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score")
-        .order("market_cap", { ascending: false })
-        .range(offset, offset + limit - 1),
-    ])
-
-    const { count, error: countError } = countResult
-    const { data, error: dataError } = dataResult
-
-    if (countError) {
-      console.error("Error getting count:", countError)
-      throw new Error(`Failed to get total count: ${countError.message}`)
-    }
-
-    if (dataError) {
-      console.error("Error fetching coins:", dataError)
-      throw new Error(`Failed to fetch coins: ${dataError.message}`)
-    }
-
-    const totalCount = count || 0
-    const coins = data || []
+    // Fetch all coins from Bunny CDN (includes pre-calculated scores)
+    const bunnyResult = await getCoinsFromBunny(page, limit)
+    const coins = bunnyResult.coins
+    const totalCount = bunnyResult.totalCount
 
     console.log(`Fetched ${coins.length} coins in ${Date.now() - startTime}ms`)
 
     // Process the data to add public URLs for logos
-    const processedCoins = coins.map((coin) => ({
+    const processedCoins = coins.map((coin: CryptoData) => ({
       ...coin,
       logo_url: coin.logo_storage_path ? getPublicUrl(coin.logo_storage_path) : null,
     }))

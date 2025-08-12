@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/utils/supabase'
 import { getHealthScore } from '@/utils/beat-calculator'
+import { getCoinByIdFromBunny } from '@/actions/fetch-coins-from-bunny'
 
 // Function to immediately check if an alert should trigger
 async function checkAlertImmediately(userId: string, coinId: string, alertType: string, thresholdValue: number) {
   try {
     console.log(`🔍 Immediate check for ${coinId} ${alertType} alert`)
 
-    // Fetch current coin data with pre-calculated scores
-    const { data: coinData, error: coinError } = await supabase
-      .from('coins')
-      .select('*, health_score, twitter_subscore, github_subscore, consistency_score, gem_score')
-      .eq('coingecko_id', coinId)
-      .single()
+    // Fetch current coin data with pre-calculated scores from Bunny CDN
+    const coinData = await getCoinByIdFromBunny(coinId)
 
-    if (coinError || !coinData) {
+    if (!coinData) {
       console.log(`⚠️ No coin data found for immediate check: ${coinId}`)
       return
     }
 
-    // Use pre-calculated scores from database
+    // Use pre-calculated scores from Bunny CDN
     const healthScore = getHealthScore(coinData)
     const consistencyScore = coinData.consistency_score || 50
 
@@ -148,6 +145,38 @@ export async function POST(request: NextRequest) {
     // Otherwise, create/upsert new alert
     if (!coin_id || !alert_type) {
       return NextResponse.json({ error: 'coin_id and alert_type are required for new alerts' }, { status: 400 })
+    }
+
+    // Get user's smart alerts limit from quota
+    const { data: userQuota, error: quotaError } = await supabase
+      .from('user_ai_usage')
+      .select('smart_alerts_limit, billing_plan')
+      .eq('user_id', userId)
+      .single()
+
+    if (quotaError) {
+      console.error('Error fetching user quota:', quotaError)
+      return NextResponse.json({ error: 'Failed to check user quota' }, { status: 500 })
+    }
+
+    const smartAlertsLimit = userQuota?.smart_alerts_limit || 20 // Default to free tier limit
+
+    // Check current alert count for this user
+    const { count, error: countError } = await supabase
+      .from('user_alerts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    if (countError) {
+      console.error('Error counting user alerts:', countError)
+      return NextResponse.json({ error: 'Failed to check alert limit' }, { status: 500 })
+    }
+    
+    if ((count ?? 0) >= smartAlertsLimit) {
+      const planType = userQuota?.billing_plan === 'pro' ? 'Pro' : 'Free'
+      return NextResponse.json({ 
+        error: `Maximum number of alerts (${smartAlertsLimit}) reached for ${planType} plan. Please delete some alerts to add new ones or upgrade your plan for more alerts.` 
+      }, { status: 400 })
     }
 
     // Upsert the alert (insert or update if exists)

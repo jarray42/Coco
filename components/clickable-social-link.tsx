@@ -33,8 +33,9 @@ export function ClickableSocialLink({ url, value, icon, label, isDarkMode, type 
   }
 
   const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (url) {
-      e.stopPropagation()
       window.open(url, "_blank", "noopener,noreferrer")
     }
   }
@@ -49,7 +50,8 @@ export function ClickableSocialLink({ url, value, icon, label, isDarkMode, type 
     : `text-slate-600 ${url ? `hover:text-white hover:bg-sky-500/80 hover:scale-105` : ""}`
 
   return (
-    <div
+    <button
+      type="button"
       className={`${baseClasses} ${colorClasses} ${url ? "cursor-pointer" : "cursor-default"} ${
         isDarkMode ? "bg-slate-800/40" : "bg-slate-100/60"
       }`}
@@ -57,6 +59,7 @@ export function ClickableSocialLink({ url, value, icon, label, isDarkMode, type 
       onMouseEnter={() => setIsHovered(!!url)}
       onMouseLeave={() => setIsHovered(false)}
       title={url ? `Visit ${label} (${formatNumber(value)})` : `${label}: ${formatNumber(value)} (No URL)`}
+      tabIndex={0}
     >
       <div className="flex items-center gap-1">
         {icon}
@@ -69,6 +72,6 @@ export function ClickableSocialLink({ url, value, icon, label, isDarkMode, type 
           />
         )}
       </div>
-    </div>
+    </button>
   )
 }

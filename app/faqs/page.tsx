@@ -45,15 +45,9 @@ export default function FAQsPage() {
   const faqs = [
     {
       icon: <Code className="w-6 h-6" />,
-      question: 'How is the "Consistency Score" calculated?',
+      question: 'How are the "Health Score" and "Consistency Score" calculated?',
       answer:
-        "The Consistency Score is a number from 1–100 that measures how regularly and how recently a crypto project's team ships code on GitHub and posts on Twitter. It is computed by combining weighted, normalized measures of frequency (20-day commit baseline, 60-day tweet baseline) and recency (days commit cap, days tweet cap) for a project's last 30 days of GitHub commits and Twitter posts (60% frequency/40% recency), blended 60% GitHub to 40% Twitter.",
-    },
-    {
-      icon: <Heart className="w-6 h-6 text-red-500" />,
-      question: "How is the Health Score calculated?",
-      answer:
-        "Our Health Score combines on-chain metrics (transaction volume, active addresses), developer activity (GitHub commits/issues), social sentiment, and community heart-votes—each normalized and weighted, with AI dynamically tuning the weights in real time—to produce a 0–100 index.",
+        "We combine three simple measures—trading activity, social engagement, and code updates—to give each project a \"health\" score from 0–100, where higher means more active and well supported. Trading volume is scaled so both small and large projects fit on the same curve, while Twitter posts and GitHub commits get credit for how recent they are and how many followers or stars they have. The \"consistency\" score also runs from 0–100 and tracks how regularly the team tweets or ships code, rewarding steady, ongoing work and lowering the score if long breaks occur. Together, these two scores let you see at a glance which projects are not only popular but also reliably maintained.",
     },
     {
       icon: <DollarSign className="w-6 h-6" />,

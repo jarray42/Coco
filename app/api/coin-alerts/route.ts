@@ -103,11 +103,13 @@ export async function GET(req: NextRequest) {
 
     // If alert_type is provided, return pool info as before
     if (alert_type) {
+      // Return all alerts for this coin/type (not just pending)
+      const allAlerts = data || []
       // Only count alerts that are pending (archived already filtered above)
-      const pendingAlerts = (data || []).filter((a: any) => a.status === 'pending')
+      const pendingAlerts = allAlerts.filter((a: any) => a.status === 'pending')
       const totalEggs = pendingAlerts.reduce((sum: number, a: { eggs_staked?: number }) => sum + (a.eggs_staked || 0), 0)
       const poolFilled = totalEggs >= 20 // or your POOL_SIZE
-      return new Response(JSON.stringify({ alerts: pendingAlerts, totalEggs, poolFilled }), { status: 200 })
+      return new Response(JSON.stringify({ alerts: allAlerts, pendingAlerts, totalEggs, poolFilled }), { status: 200 })
     }
 
     // Otherwise, just return the alerts (for status=verified)

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabaseAuth } from "../../../utils/supabase-auth"
 import { Loader2, CheckCircle, XCircle } from "lucide-react"
+import { getUserQuota } from '../../../utils/quota-manager'
 
 export default function AuthCallback() {
   const router = useRouter()
@@ -12,40 +13,56 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const handleAuthCallback = async () => {
+      // 1. Check if user is already authenticated (OAuth, Google, etc.)
+      const { data: { user } } = await supabaseAuth.auth.getUser()
+      if (user) {
+        // Map Supabase user to AuthUser type
+        const authUser = {
+          id: user.id,
+          email: user.email || '',
+          email_confirmed_at: user.email_confirmed_at,
+          user_metadata: user.user_metadata,
+        }
+        // Ensure user_ai_usage is created for new Google signups
+        await getUserQuota(authUser)
+        setStatus("success")
+        setMessage("Login successful! Redirecting...")
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" })
+          router.push("/")
+        }, 2000)
+        return
+      }
+
+      // 2. Fallback: handle email confirmation via hash
       try {
-        // Get the URL hash parameters
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = hashParams.get("access_token")
         const refreshToken = hashParams.get("refresh_token")
         const type = hashParams.get("type")
 
         if (type === "signup" && accessToken && refreshToken) {
-          // Set the session with the tokens
           const { data, error } = await supabaseAuth.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           })
 
           if (error) {
-            console.error("Error setting session:", error)
             setStatus("error")
             setMessage("Failed to confirm email. Please try again.")
           } else if (data.user) {
             setStatus("success")
             setMessage("Email confirmed successfully! Redirecting...")
-            // Redirect to dashboard after a short delay and scroll to top
             setTimeout(() => {
               window.scrollTo({ top: 0, behavior: "smooth" })
               router.push("/")
             }, 2000)
           }
         } else {
-          // Handle other auth flows or errors
           setStatus("error")
-          setMessage("Invalid confirmation link.")
+          setMessage("Invalid confirmation link or authentication failed.")
         }
       } catch (error) {
-        console.error("Auth callback error:", error)
         setStatus("error")
         setMessage("An error occurred during confirmation.")
       }
