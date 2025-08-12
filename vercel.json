@@ -7,15 +7,4 @@
       "maxDuration": 60
     }
   }
-  // Cron jobs temporarily disabled for free tier deployment
-  // "crons": [
-  //   {
-  //     "path": "/api/cron-reset-quotas",
-  //     "schedule": "0 0 1 * *"
-  //   },
-  //   {
-  //     "path": "/api/notifications/cron",
-  //     "schedule": "*/30 * * * *"
-  //   }
-  // ]
 }
