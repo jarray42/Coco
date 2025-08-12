@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getLatestCryptoJsonFilename } from '../../../utils/bunny-client';
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export interface SearchIndexItem {
   coingecko_id: string;
   name: string;

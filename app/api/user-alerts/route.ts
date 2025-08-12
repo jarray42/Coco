@@ -3,6 +3,10 @@ import { supabase } from '@/utils/supabase'
 import { getHealthScore } from '@/utils/beat-calculator'
 import { getCoinByIdFromBunny } from '@/actions/fetch-coins-from-bunny'
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 // Function to immediately check if an alert should trigger
 async function checkAlertImmediately(userId: string, coinId: string, alertType: string, thresholdValue: number) {
   try {

@@ -7,6 +7,10 @@ import { type AuthUser } from "@/utils/supabase-auth"
 import { streamText } from "ai"
 import { checkQuotaLimit, incrementTokenUsage } from "@/utils/quota-manager"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export const runtime = "edge"
 
 function mapCoinDataToCryptoData(coin: any) {

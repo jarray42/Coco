@@ -3,6 +3,9 @@ import { stripe, PRICE_CONFIG } from '@/utils/stripe'
 import { createClient } from '@/utils/supabase-server'
 import { headers } from 'next/headers'
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   try {
     const { isYearly, userId } = await req.json()

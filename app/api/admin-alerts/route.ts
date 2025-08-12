@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/utils/supabase"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
 // Admin emails that can create admin alerts
 const ADMIN_EMAILS = ["jarray42@gmail.com", "jarray.ahmed42@gmail.com"]
 

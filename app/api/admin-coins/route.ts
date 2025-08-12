@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAllCoinsFromBunny } from "@/actions/fetch-all-coins-from-bunny"
 import type { CryptoData } from "@/utils/beat-calculator"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 // GET: Get list of coins for admin selection from Bunny CDN
 export async function GET(req: NextRequest) {
   try {

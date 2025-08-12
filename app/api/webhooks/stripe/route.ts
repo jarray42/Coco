@@ -3,6 +3,10 @@ import { stripe } from '@/utils/stripe'
 import { createClient } from '@/utils/supabase-server'
 import Stripe from 'stripe'
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
 export async function POST(req: NextRequest) {

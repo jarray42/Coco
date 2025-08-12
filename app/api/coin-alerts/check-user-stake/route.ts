@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server"
 import { supabase } from "@/utils/supabase"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export const runtime = "edge"
 
 // GET: Check if user has staked on a specific coin

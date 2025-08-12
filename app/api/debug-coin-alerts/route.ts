@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/utils/supabase"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)

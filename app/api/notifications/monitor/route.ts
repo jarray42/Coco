@@ -3,6 +3,10 @@ import { supabase } from '@/utils/supabase'
 import { getHealthScore } from '@/utils/beat-calculator'
 import { getCoinByIdFromBunny } from '@/actions/fetch-coins-from-bunny'
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 // Anti-spam configuration
 const NOTIFICATION_COOLDOWNS = {
   health_score: 4 * 60 * 60 * 1000,     // 4 hours

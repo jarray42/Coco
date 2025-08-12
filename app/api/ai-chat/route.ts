@@ -4,6 +4,10 @@ import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { streamText } from "ai"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export const runtime = "edge" // Enable streaming
 
 export async function POST(req: NextRequest) {

@@ -4,6 +4,10 @@ import { getHealthScore } from "@/utils/beat-calculator"
 import { streamText } from "ai"
 import { groq } from "@ai-sdk/groq"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export const runtime = "edge"
 
 export async function POST(req: NextRequest) {

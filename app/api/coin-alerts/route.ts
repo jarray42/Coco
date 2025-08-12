@@ -2,6 +2,10 @@ import { NextRequest } from "next/server"
 import { supabase } from "@/utils/supabase"
 import { getUserQuota } from "@/utils/quota-manager"
 
+// Force dynamic rendering - prevent static analysis during build
+export const dynamic = 'force-dynamic'
+
+
 export const runtime = "edge"
 
 // POST: Submit or update an alert
