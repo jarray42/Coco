@@ -12,7 +12,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { SiteHeader } from "../../components/site-header"
 import { ModernDeFiBackground } from "../../components/modern-defi-background"
-import { AuthModal } from "../../components/auth-modal"
+// import { AuthModal } from "../../components/auth-modal"
 import { ElegantFooter } from "../../components/elegant-footer"
 import { UserMenu } from "../../components/user-menu"
 import { supabaseAuth } from "../../utils/supabase-auth"
@@ -122,7 +122,18 @@ export default function ContactPage() {
               {user ? (
                 <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
               ) : (
-                <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
+                // <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
+                <div className="text-center">
+                  <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                    Please sign in to send a message.
+                  </p>
+                  <Button
+                    onClick={() => handleAuthSuccess()} // Simulate auth success for now
+                    className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Sign In
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -201,7 +212,18 @@ export default function ContactPage() {
             {user ? (
               <UserMenu user={user} isDarkMode={isDarkMode} onSignOut={handleSignOut} />
             ) : (
-              <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
+              // <AuthModal isDarkMode={isDarkMode} onAuthSuccess={handleAuthSuccess} />
+              <div className="text-center">
+                <p className={`text-sm ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                  Please sign in to send a message.
+                </p>
+                <Button
+                  onClick={() => handleAuthSuccess()} // Simulate auth success for now
+                  className="w-full h-10 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105"
+                >
+                  Sign In
+                </Button>
+              </div>
             )}
           </div>
         </div>
