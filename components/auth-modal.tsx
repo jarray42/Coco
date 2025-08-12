@@ -2,6 +2,8 @@
 
 import type React from "react"
 import { supabaseAuth } from "../utils/supabase-auth" // Declare the variable here
+import { Auth } from '@supabase/auth-ui-react'
+import { ThemeSupa } from '@supabase/auth-ui-shared'
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -30,6 +32,20 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
   // Form states
   const [signInData, setSignInData] = useState({ email: "", password: "" })
   const [signUpData, setSignUpData] = useState({ email: "", password: "", fullName: "", confirmPassword: "" })
+
+  // Handle auth state change from Supabase Auth UI
+  const handleAuthStateChange = (event: string, session: any) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      setIsOpen(false)
+      onAuthSuccess()
+      setSuccess("Successfully signed in!")
+      
+      // Scroll to top after successful login
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" })
+      }, 100)
+    }
+  }
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
@@ -201,13 +217,16 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
 
           <Tabs defaultValue="signin" className="w-full">
             <TabsList
-              className={`grid w-full grid-cols-2 rounded-xl ${isDarkMode ? "bg-slate-700/50" : "bg-slate-100/80"}`}
+              className={`grid w-full grid-cols-3 rounded-xl ${isDarkMode ? "bg-slate-700/50" : "bg-slate-100/80"}`}
             >
               <TabsTrigger value="signin" className="rounded-lg text-sm">
                 Sign In
               </TabsTrigger>
               <TabsTrigger value="signup" className="rounded-lg text-sm">
                 Sign Up
+              </TabsTrigger>
+              <TabsTrigger value="quick" className="rounded-lg text-sm">
+                Quick Sign In
               </TabsTrigger>
             </TabsList>
 
@@ -559,6 +578,44 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
                   )}
                 </Button>
               </form>
+            </TabsContent>
+
+            <TabsContent value="quick" className="space-y-4">
+              <div className="text-center">
+                <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>
+                  Quick Authentication
+                </h3>
+                <p className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
+                  Sign in with your preferred method
+                </p>
+              </div>
+              
+              <Auth
+                supabaseClient={supabaseAuth}
+                appearance={{
+                  theme: ThemeSupa,
+                  variables: {
+                    default: {
+                      colors: {
+                        brand: isDarkMode ? '#3b82f6' : '#0ea5e9',
+                        brandAccent: isDarkMode ? '#1d4ed8' : '#0284c7',
+                        inputBackground: isDarkMode ? '#1e293b' : '#ffffff',
+                        inputText: isDarkMode ? '#f1f5f9' : '#0f172a',
+                        inputBorder: isDarkMode ? '#475569' : '#e2e8f0',
+                        inputLabelText: isDarkMode ? '#cbd5e1' : '#475569',
+                        anchorTextColor: isDarkMode ? '#60a5fa' : '#0ea5e9',
+                        anchorTextHoverColor: isDarkMode ? '#93c5fd' : '#0284c7',
+                        defaultButtonBackground: isDarkMode ? '#3b82f6' : '#0ea5e9',
+                        defaultButtonBackgroundHover: isDarkMode ? '#1d4ed8' : '#0284c7',
+                      }
+                    }
+                  }
+                }}
+                providers={['google']}
+                redirectTo={`${window.location.origin}/auth/callback`}
+                showLinks={false}
+                view="sign_in"
+              />
             </TabsContent>
           </Tabs>
         </DialogContent>
