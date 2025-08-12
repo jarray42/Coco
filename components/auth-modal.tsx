@@ -2,7 +2,6 @@
 
 import type React from "react"
 import { supabaseAuth } from "../utils/supabase-auth" // Declare the variable here
-import dynamic from 'next/dynamic'
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -13,12 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, EyeOff, Mail, Lock, User, Loader2, CheckCircle, RefreshCw } from "lucide-react"
 import { signIn, signUp, resendConfirmation } from "../utils/supabase-auth"
 import Image from "next/image"
-
-// Dynamically import Auth UI to prevent SSR issues
-const Auth = dynamic(() => import('@supabase/auth-ui-react').then(mod => mod.Auth), {
-  ssr: false,
-  loading: () => <div className="p-4 text-center">Loading authentication...</div>
-})
 
 interface AuthModalProps {
   isDarkMode: boolean
@@ -37,20 +30,6 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
   // Form states
   const [signInData, setSignInData] = useState({ email: "", password: "" })
   const [signUpData, setSignUpData] = useState({ email: "", password: "", fullName: "", confirmPassword: "" })
-
-  // Handle auth state change from Supabase Auth UI
-  const handleAuthStateChange = (event: string, session: any) => {
-    if (event === 'SIGNED_IN' && session?.user) {
-      setIsOpen(false)
-      onAuthSuccess()
-      setSuccess("Successfully signed in!")
-      
-      // Scroll to top after successful login
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: "smooth" })
-      }, 100)
-    }
-  }
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
@@ -222,16 +201,13 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
 
           <Tabs defaultValue="signin" className="w-full">
             <TabsList
-              className={`grid w-full grid-cols-3 rounded-xl ${isDarkMode ? "bg-slate-700/50" : "bg-slate-100/80"}`}
+              className={`grid w-full grid-cols-2 rounded-xl ${isDarkMode ? "bg-slate-700/50" : "bg-slate-100/80"}`}
             >
               <TabsTrigger value="signin" className="rounded-lg text-sm">
                 Sign In
               </TabsTrigger>
               <TabsTrigger value="signup" className="rounded-lg text-sm">
                 Sign Up
-              </TabsTrigger>
-              <TabsTrigger value="quick" className="rounded-lg text-sm">
-                Quick Sign In
               </TabsTrigger>
             </TabsList>
 
@@ -583,25 +559,6 @@ export function AuthModal({ isDarkMode, onAuthSuccess, triggerButton }: AuthModa
                   )}
                 </Button>
               </form>
-            </TabsContent>
-
-            <TabsContent value="quick" className="space-y-4">
-              <div className="text-center">
-                <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? "text-slate-100" : "text-slate-900"}`}>
-                  Quick Authentication
-                </h3>
-                <p className={`text-sm ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                  Sign in with your preferred method
-                </p>
-              </div>
-              
-              <Auth
-                supabaseClient={supabaseAuth}
-                providers={['google']}
-                redirectTo={`${window.location.origin}/auth/callback`}
-                showLinks={false}
-                view="sign_in"
-              />
             </TabsContent>
           </Tabs>
         </DialogContent>

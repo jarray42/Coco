@@ -20,7 +20,15 @@ interface QuotaError {
   message: string
 }
 
-export async function analyzeMarketWithQuota(user: AuthUser, detailed = false, model: string = 'auto'): Promise<MarketAnalysisResult | QuotaError> {
+interface AnalysisError {
+  error: string
+}
+
+export async function analyzeMarketWithQuota(
+  user: AuthUser,
+  detailed = false,
+  model: string = 'auto',
+): Promise<MarketAnalysisResult | QuotaError | AnalysisError> {
   try {
     console.log(`[Market Analysis] Starting analysis for user ${user.id}, detailed: ${detailed}`)
 
@@ -75,14 +83,9 @@ export async function analyzeMarketWithQuota(user: AuthUser, detailed = false, m
     return result
   } catch (error) {
     console.error("[analyzeMarketWithQuota ERROR]", error)
+    // Do NOT masquerade operational errors as quota exhaustion.
     return {
-      needUpgrade: true,
-      quota: {
-        tokens_used: 0,
-        token_balance: 0,
-        billing_plan: "free",
-      },
-      message: "Sorry, I'm having trouble accessing the market data right now. Please try again in a moment! 🐓",
+      error: "Service issue while fetching market data. Please try again shortly.",
     }
   }
 }

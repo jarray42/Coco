@@ -131,4 +131,3 @@ export function SmartAlertsUsageDisplay({ user, isDarkMode, refreshKey }: SmartA
     </div>
   )
 }
-

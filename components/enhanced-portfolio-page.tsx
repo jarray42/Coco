@@ -1152,7 +1152,7 @@ export function EnhancedPortfolioPage() {
                               >
                                 <span className="sr-only">Open notification setup</span>
                                 <img
-                              src={hasAlerts ? "/bell2.ico" : "/bell1.ico"}
+                                  src={hasAlerts ? "/Bell2.ico" : "/Bell1.ico"}
                                   alt={hasAlerts ? "Active alerts" : "Set alerts"}
                                   className="w-6 h-6 transition-all duration-300"
                                 />

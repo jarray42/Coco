@@ -261,6 +261,7 @@ async function performCoinAnalysis(): Promise<{
     const categoryCoins = categorizedCoins.filter((coin: any) => coin.capCategory === category)
     if (categoryCoins.length > 0) {
       capAnalysis[category] = {}
+      // Top coins per metric
       metrics.forEach((metric) => {
         const topCoin = categoryCoins.reduce((prev: any, current: any) =>
           current[metric.key] > prev[metric.key] ? current : prev,
@@ -274,6 +275,25 @@ async function performCoinAnalysis(): Promise<{
           metricName: metric.name,
         }
       })
+
+      // Gems list for UI: top by composite score within this category
+      const topGems = [...categoryCoins]
+        .sort((a: any, b: any) => (b.compositeScore || 0) - (a.compositeScore || 0))
+        .slice(0, 3)
+        .map((coin: any) => ({
+          id: coin.coingecko_id || coin.symbol,
+          name: coin.name,
+          symbol: coin.symbol,
+          price: coin.price,
+          priceChange24h: coin.price_change_24h,
+          beatScore: coin.beatScore,
+          compositeScore: Math.round((coin.compositeScore || 0) * 100),
+          marketCap: coin.market_cap,
+          logoUrl: coin.logo_url,
+          logoStoragePath: coin.logo_storage_path,
+        }))
+
+      capAnalysis[category].gems = topGems
     }
   })
   const riskIndicators = []
