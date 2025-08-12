@@ -6,15 +6,16 @@
     "app/api/notifications/monitor/route.ts": {
       "maxDuration": 60
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron-reset-quotas",
-      "schedule": "0 0 1 * *"
-    },
-    {
-      "path": "/api/notifications/cron",
-      "schedule": "0 */24 * * *"
-    }
-  ]
+  }
+  // Cron jobs temporarily disabled for free tier deployment
+  // "crons": [
+  //   {
+  //     "path": "/api/cron-reset-quotas",
+  //     "schedule": "0 0 1 * *"
+  //   },
+  //   {
+  //     "path": "/api/notifications/cron",
+  //     "schedule": "*/30 * * * *"
+  //   }
+  // ]
 }
