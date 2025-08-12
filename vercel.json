@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/notifications/cron",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 */24 * * *"  // Every 12 hours instead of every 30 minutes
     }
   ]
 }
