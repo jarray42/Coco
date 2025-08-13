@@ -78,7 +78,7 @@ export function CompactCoinRow({
 
   // Notification setup state
   const [notificationLoading, setNotificationLoading] = useState(false)
-  const [notificationError, setNotificationError] = useState<string | null>(null)
+  const [notificationError, setNotificationError] = useState<string | React.ReactNode | null>(null)
   const [notificationSuccess, setNotificationSuccess] = useState<string | null>(null)
   const [healthThreshold, setHealthThreshold] = useState(30)
   const [consistencyThreshold, setConsistencyThreshold] = useState(25)
@@ -278,7 +278,10 @@ export function CompactCoinRow({
             ...alert
           })
         })
-        if (!res.ok) throw new Error('Failed to save alert settings')
+        if (!res.ok) {
+          const errorData = await res.json()
+          throw new Error(errorData.error || 'Failed to save alert settings')
+        }
       }
 
       setNotificationSuccess("Notification settings saved!")
@@ -296,7 +299,27 @@ export function CompactCoinRow({
         keysToRemove.forEach(key => sessionStorage.removeItem(key))
       }
     } catch (err: any) {
-      setNotificationError(err.message)
+      const errorMessage = err.message
+      // Check if it's a limit error and add upgrade link
+      if (errorMessage.includes('Maximum number of alerts') && errorMessage.includes('Free plan')) {
+        setNotificationError(
+          <span>
+            Alert limit reached (20/20). 
+            <a 
+              href="/plans" 
+              className="text-purple-500 hover:text-purple-600 underline font-medium ml-1"
+              onClick={(e) => {
+                e.stopPropagation()
+                window.location.href = '/plans'
+              }}
+            >
+              Upgrade to Pro for 200 alerts
+            </a>
+          </span>
+        )
+      } else {
+        setNotificationError(errorMessage)
+      }
     } finally {
       setNotificationLoading(false)
     }
@@ -594,7 +617,7 @@ export function CompactCoinRow({
                 >
                   <span className="sr-only">Open notification setup</span>
                   <img
-                    src={hasActiveAlerts ? "/Bell2.ico" : "/Bell1.ico"}
+                    src={hasActiveAlerts ? "/bell2.ico" : "/bell1.ico"}
                     alt={hasActiveAlerts ? "Active alerts" : "Set alerts"}
                     className="w-6 h-6 transition-all duration-300"
                   />

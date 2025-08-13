@@ -4,27 +4,17 @@ import type React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Send,
-  Loader2,
-  MessageCircle,
-  Sparkles,
-  TrendingUp,
-  Target,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Twitter,
-  TrendingDown,
-  Crown,
-} from "lucide-react"
+import { Send, Loader2, MessageCircle, Sparkles, TrendingUp, Target, X, ChevronDown, ChevronUp, Twitter } from "lucide-react"
 import Image from "next/image"
 import type { AuthUser } from "../utils/supabase-auth"
 import { AuthModal } from "./auth-modal"
 import { ElegantDetailedAnalysis } from "./elegant-detailed-analysis"
 import { CompactQuotaDisplay } from "./compact-quota-display"
 import { analyzeMarketWithQuota, chatWithMarketBotWithQuota } from "../actions/market-analysis-with-quota"
-import { PieChart, Gem } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { TrendingDown, PieChart, Gem } from "lucide-react"
+import { ElegantMarketCapAnalysis } from "./elegant-market-cap-analysis"
 
 interface ChatMessage {
   role: "user" | "assistant"
@@ -92,7 +82,6 @@ export function ElegantCocoriAIWidget({
   const [widgetPosition, setWidgetPosition] = useState({ x: 0, y: 0, width: 0 })
   const [panelWidth, setPanelWidth] = useState(0)
   const [dashboardOffset, setDashboardOffset] = useState(0)
-  const [panelLeft, setPanelLeft] = useState(0)
 
   const scrollToBottom = () => {
     const container = messagesContainerRef.current
@@ -126,12 +115,9 @@ export function ElegantCocoriAIWidget({
 
         setPanelWidth(dashboardRect.width)
         // Calculate offset from widget to dashboard left edge
-        const offset = dashboardRect.left - widgetRect.left
-        setDashboardOffset(offset)
-        setPanelLeft(offset)
+        setDashboardOffset(dashboardRect.left - widgetRect.left)
       } else if (dashboardWidth > 0) {
         setPanelWidth(dashboardWidth)
-        setPanelLeft(0)
       }
     }
   }, [dashboardWidth])
@@ -147,7 +133,6 @@ export function ElegantCocoriAIWidget({
       if (!user && expand) return
 
       setIsAnimating(true)
-      // Measure before toggling
       measureDimensions()
 
       if (expand) {
@@ -157,8 +142,6 @@ export function ElegantCocoriAIWidget({
 
         // Wait for DOM update then start animation
         await new Promise((resolve) => setTimeout(resolve, 50))
-        // Re-measure after expansion to ensure correct alignment during loading
-        measureDimensions()
       } else {
         setIsExpanded(false)
         onExpansionChange?.(false)
@@ -173,29 +156,9 @@ export function ElegantCocoriAIWidget({
     [user, onExpansionChange, measureDimensions],
   )
 
-  // Re-measure when expanded state changes to keep panel aligned immediately
-  useEffect(() => {
-    if (isExpanded) {
-      measureDimensions()
-      const rafId = requestAnimationFrame(() => measureDimensions())
-      const timeoutId = setTimeout(() => measureDimensions(), 250)
-      return () => {
-        cancelAnimationFrame(rafId)
-        clearTimeout(timeoutId)
-      }
-    }
-  }, [isExpanded, measureDimensions])
-
-  // Re-measure when content state changes to keep alignment stable after analysis finishes
-  useEffect(() => {
-    if (isExpanded) {
-      measureDimensions()
-    }
-  }, [loading, analysis, detailedLoading, showDetailed, measureDimensions, isExpanded])
-
   const handleQuotaError = (error: any) => {
     setQuotaExceededMessage(
-      "You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month.",
+      "You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month."
     )
   }
 
@@ -221,35 +184,19 @@ export function ElegantCocoriAIWidget({
         console.error("[DEBUG] analyzeMarketWithQuota returned undefined or null result")
       }
 
-      if ("error" in (result as any)) {
-        setAnalysis("Sorry, market data service is busy. Please try again in a moment! 🐓")
-        return
-      }
-
-      if ("needUpgrade" in (result as any)) {
+      if ("needUpgrade" in result) {
         handleQuotaError(result)
         return
       }
 
-      const success = result as any
-      setAnalysis(success.analysis)
-      setCapAnalysisData(success.capAnalysis)
-      setRiskIndicatorsData(success.riskIndicators || [])
+      setAnalysis(result.analysis)
+      setCapAnalysisData(result.capAnalysis)
+      setRiskIndicatorsData(result.riskIndicators || [])
       setQuotaRefreshKey((prev) => prev + 1)
-    } catch (error: any) {
+    } catch (error) {
       if (timeoutId) clearTimeout(timeoutId)
       console.error("[DEBUG] Error in handleAnalyzeMarket:", error)
-      // Distinguish quota vs service error based on shape
-      if (error && typeof error === "object" && "needUpgrade" in error) {
-        setQuotaExceededMessage(
-          (error as any).message ||
-            "You have reached your monthly AI quota. Please upgrade your plan for more requests, or wait until your quota resets next month.",
-        )
-      } else if (error && typeof error === "object" && "error" in error) {
-        setAnalysis("Sorry, market data service is busy. Please try again in a moment! 🐓")
-      } else {
-        setAnalysis("Sorry, there was an error analyzing the market. Please try again! 🐓")
-      }
+      setAnalysis("Sorry, there was an error analyzing the market. Please try again! 🐓")
     } finally {
       setLoading(false)
     }
@@ -262,23 +209,17 @@ export function ElegantCocoriAIWidget({
     try {
       const result = await analyzeMarketWithQuota(user, true, selectedModel)
 
-      if ("error" in (result as any)) {
-        setDetailedAnalysis("Sorry, market data service is busy. Please try again in a moment! 🐓")
-        return
-      }
-
-      if ("needUpgrade" in (result as any)) {
+      if ("needUpgrade" in result) {
         handleQuotaError(result)
         return
       }
 
-      const success = result as any
-      setDetailedAnalysis(success.analysis)
-      if (success.capAnalysis) {
-        setCapAnalysisData(success.capAnalysis)
+      setDetailedAnalysis(result.analysis)
+      if (result.capAnalysis) {
+        setCapAnalysisData(result.capAnalysis)
       }
-      if (success.riskIndicators) {
-        setRiskIndicatorsData(success.riskIndicators)
+      if (result.riskIndicators) {
+        setRiskIndicatorsData(result.riskIndicators)
       }
       setShowDetailed(true)
       setQuotaRefreshKey((prev) => prev + 1)
@@ -317,7 +258,7 @@ export function ElegantCocoriAIWidget({
     try {
       // Use robust server action for market chat
       const result = await chatWithMarketBotWithQuota(user, chatInput, selectedModel)
-      if (result && "response" in result && typeof result.response === "string") {
+      if (result && 'response' in result && typeof result.response === "string") {
         const botMessage: ChatMessage = {
           role: "assistant",
           content: result.response,
@@ -325,29 +266,23 @@ export function ElegantCocoriAIWidget({
         }
         setChatMessages((prev) => [...prev, botMessage])
         setQuotaRefreshKey((prev) => prev + 1)
-      } else if (result && "needUpgrade" in result && result.needUpgrade) {
+      } else if (result && 'needUpgrade' in result && result.needUpgrade) {
         // Handle quota error if needed
         setQuotaExceededMessage(result.message || "You've reached your quota.")
       } else {
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "Sorry, I'm having trouble right now. Please try again! 🐓",
-            timestamp: new Date(),
-          },
-        ])
-      }
-    } catch (error) {
-      console.error("Error in chat:", error)
-      setChatMessages((prev) => [
-        ...prev,
-        {
+        setChatMessages((prev) => [...prev, {
           role: "assistant",
           content: "Sorry, I'm having trouble right now. Please try again! 🐓",
           timestamp: new Date(),
-        },
-      ])
+        }])
+      }
+    } catch (error) {
+      console.error("Error in chat:", error)
+      setChatMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Sorry, I'm having trouble right now. Please try again! 🐓",
+        timestamp: new Date(),
+      }])
     } finally {
       setChatLoading(false)
       setStreamingMessage("")
@@ -460,64 +395,47 @@ export function ElegantCocoriAIWidget({
   }
 
   // Helper for random tweet phrasing
-  function getRandomTweetText(type: "sentiment" | "gems", data: any) {
+  function getRandomTweetText(type: 'sentiment' | 'gems', data: any) {
     const userHandles = [
-      "crypto enthusiast",
-      "blockchain believer",
-      "DeFi explorer",
-      "CocoriCoin user",
-      "market watcher",
-      "portfolio optimizer",
-      "trend spotter",
-      "altcoin hunter",
-      "hodler",
-      "egg staker",
+      'crypto enthusiast', 'blockchain believer', 'DeFi explorer', 'CocoriCoin user', 'market watcher', 'portfolio optimizer', 'trend spotter', 'altcoin hunter', 'hodler', 'egg staker'
     ]
     const intros = [
-      "🚀 Just got my AI-powered market scoop:",
-      "🤖 My crypto AI advisor says:",
-      "🐔 CocoriAI just dropped this:",
-      "💡 Here's my latest crypto insight:",
-      "🔥 Market pulse from my dashboard:",
-      "🦾 AI market check-in:",
-      "🌐 Crypto update from CocoriCoin:",
-      "📊 Portfolio AI says:",
-      "🧠 AI market wisdom:",
-      "🔍 My crypto radar:",
+      '🚀 Just got my AI-powered market scoop:',
+      '🤖 My crypto AI advisor says:',
+      '🐔 CocoriAI just dropped this:',
+      '💡 Here\'s my latest crypto insight:',
+      '🔥 Market pulse from my dashboard:',
+      '🦾 AI market check-in:',
+      '🌐 Crypto update from CocoriCoin:',
+      '📊 Portfolio AI says:',
+      '🧠 AI market wisdom:',
+      '🔍 My crypto radar:'
     ]
     const outros = [
-      "What do you think?",
-      "Stay sharp!",
-      "Let's ride the trend!",
-      "More at CocoriCoin.com",
-      "Powered by #CocoriAI",
-      "Eggs up! 🥚",
-      "DYOR but this is 🔥",
-      "Crypto never sleeps!",
-      "Sharing for my fellow degens!",
-      "Let's make it! 🚀",
+      'What do you think?',
+      'Stay sharp!',
+      'Let\'s ride the trend!',
+      'More at CocoriCoin.com',
+      'Powered by #CocoriAI',
+      'Eggs up! 🥚',
+      'DYOR but this is 🔥',
+      'Crypto never sleeps!',
+      'Sharing for my fellow degens!',
+      'Let\'s make it! 🚀'
     ]
-    function pick(arr: string[]) {
-      return arr[Math.floor(Math.random() * arr.length)]
-    }
-    if (type === "sentiment") {
+    function pick(arr: string[]) { return arr[Math.floor(Math.random() * arr.length)] }
+    if (type === 'sentiment') {
       const intro = pick(intros)
       const outro = pick(outros)
       const user = pick(userHandles)
-      const sentiment = data.marketSentiment ? `Market: ${data.marketSentiment}` : ""
-      const insights =
-        data.insights && data.insights.length > 0 ? `Key insights: ${data.insights.slice(0, 2).join("; ")}` : ""
+      const sentiment = data.marketSentiment ? `Market: ${data.marketSentiment}` : ''
+      const insights = data.insights && data.insights.length > 0 ? `Key insights: ${data.insights.slice(0,2).join('; ')}` : ''
       return `${intro}\n(${user})\n${sentiment}\n${insights}\n${outro} #CocoriCoin`.slice(0, 280)
     } else {
       const intro = pick(intros)
       const outro = pick(outros)
-      const gems = data.capAnalysis
-        ? `Gem picks: ${Object.values(data.capAnalysis)
-            .map((cat: any) => cat.compositeScore?.name)
-            .filter(Boolean)
-            .join(", ")}`
-        : ""
-      const risks = data.migration ? `Risks/alerts: ${data.migration}` : ""
+      const gems = data.capAnalysis ? `Gem picks: ${Object.values(data.capAnalysis).map((cat: any) => cat.compositeScore?.name).filter(Boolean).join(', ')}` : ''
+      const risks = data.migration ? `Risks/alerts: ${data.migration}` : ''
       return `${intro}\n${gems}\n${risks}\n${outro} #CocoriCoin`.slice(0, 280)
     }
   }
@@ -545,15 +463,13 @@ export function ElegantCocoriAIWidget({
               <div className="ml-4">
                 <select
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={e => setSelectedModel(e.target.value)}
                   className={`rounded-lg px-2 py-1 text-xs font-medium border ${isDarkMode ? "bg-slate-800/70 text-slate-100 border-slate-700" : "bg-white/80 text-slate-900 border-slate-300"}`}
                   style={{ minWidth: 120 }}
                   title="Choose AI model"
                 >
-                  {MODEL_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                  {MODEL_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
               </div>
@@ -632,7 +548,7 @@ export function ElegantCocoriAIWidget({
       {/* Boomerang Connector - Positioned relative to widget center */}
       <div
         ref={connectorRef}
-        className={`absolute top-full transition-all duration-500 ease-out transform-gpu ${
+        className={`absolute left-1/2 top-full transition-all duration-500 ease-out transform-gpu ${
           isExpanded ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
         style={{
@@ -642,7 +558,7 @@ export function ElegantCocoriAIWidget({
             ? "linear-gradient(to bottom, rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.1))"
             : "linear-gradient(to bottom, rgba(71, 85, 105, 0.3), rgba(71, 85, 105, 0.1))",
           transformOrigin: "top center",
-          left: `${widgetPosition.width / 2}px`,
+          transform: "translateX(-50%)",
           zIndex: 15,
         }}
       />
@@ -654,7 +570,7 @@ export function ElegantCocoriAIWidget({
         }`}
         style={{
           width: isExpanded ? `${panelWidth}px` : `${widgetPosition.width}px`,
-          left: isExpanded ? `${panelLeft}px` : `${0}px`,
+          left: isExpanded ? `${dashboardOffset}px` : "0px",
           transformOrigin: "top center",
           zIndex: 10,
         }}
@@ -724,12 +640,8 @@ export function ElegantCocoriAIWidget({
             {quotaExceededMessage && (
               <div className="flex flex-col items-center justify-center h-full text-center p-6">
                 <div className="text-2xl mb-2">🐔</div>
-                <div className={`font-semibold text-base mb-2 ${isDarkMode ? "text-amber-300" : "text-amber-700"}`}>
-                  Quota Exhausted
-                </div>
-                <div className={`mb-4 text-xs ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>
-                  {quotaExceededMessage}
-                </div>
+                <div className={`font-semibold text-base mb-2 ${isDarkMode ? "text-amber-300" : "text-amber-700"}`}>Quota Exhausted</div>
+                <div className={`mb-4 text-xs ${isDarkMode ? "text-slate-300" : "text-slate-700"}`}>{quotaExceededMessage}</div>
                 <Button
                   asChild
                   className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-xl px-4 py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
@@ -742,10 +654,7 @@ export function ElegantCocoriAIWidget({
               <>
                 {activeTab === "chat" && (
                   <div className="space-y-3 h-full flex flex-col">
-                    <div
-                      ref={messagesContainerRef}
-                      className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}
-                    >
+                    <div ref={messagesContainerRef} className={`flex-1 overflow-y-auto p-3 rounded-xl ${cardClass} border space-y-3`}>
                       {chatMessages.length === 0 && (
                         <div className="text-center py-6">
                           <div className="relative mb-3">
@@ -759,17 +668,13 @@ export function ElegantCocoriAIWidget({
                           </div>
                           <h3 className={`text-base font-semibold mb-2 ${textClass}`}>Market Intelligence Chat 🐓</h3>
                           <p className={`${mutedTextClass} max-w-md mx-auto text-xs`}>
-                            Ask me about market trends, specific coins, or trading opportunities based on CocoriCoin
-                            data!
+                            Ask me about market trends, specific coins, or trading opportunities based on CocoriCoin data!
                           </p>
                         </div>
                       )}
 
                       {chatMessages.map((message, index) => (
-                        <div
-                          key={index}
-                          className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                        >
+                        <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                           <div
                             className={`max-w-[80%] p-2 rounded-xl shadow-lg font-sans font-[Inter,system-ui,sans-serif] text-[15px] font-medium ${
                               message.role === "user"
@@ -787,9 +692,7 @@ export function ElegantCocoriAIWidget({
                       {/* Show streaming message if present */}
                       {streamingMessage && (
                         <div className="flex justify-start">
-                          <div
-                            className={`p-2 rounded-xl font-sans font-[Inter,system-ui,sans-serif] text-lg font-medium ${isDarkMode ? "bg-slate-700/50" : "bg-white border border-slate-200/50"} shadow-lg animate-pulse flex items-center`}
-                          >
+                          <div className={`p-2 rounded-xl font-sans font-[Inter,system-ui,sans-serif] text-lg font-medium ${isDarkMode ? "bg-slate-700/50" : "bg-white border border-slate-200/50"} shadow-lg animate-pulse flex items-center`}>
                             <div className="whitespace-pre-wrap leading-relaxed">
                               {streamingMessage}
                               <span className="blinking-cursor-block ml-1">█</span>
@@ -863,337 +766,105 @@ export function ElegantCocoriAIWidget({
                     )}
 
                     {analysis && parsedAnalysis && !showDetailed && (
-                      <div className="flex gap-4 h-full">
-                        {/* Main Content Area - 75% */}
-                        <div className="flex-1 space-y-3 overflow-y-auto pr-2">
-                          {/* Market Sentiment Card */}
-                          {parsedAnalysis.marketSentiment && (
-                            <div
-                              className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-[1.01] hover:shadow-md cursor-pointer ${
-                                isDarkMode
-                                  ? "bg-slate-800/60 border border-slate-700/40 hover:bg-slate-800/80"
-                                  : "bg-white/90 border border-slate-200/60 hover:bg-white"
-                              }`}
-                            >
-                              {/* Colored top border */}
-                              <div className="h-1 bg-gradient-to-r from-blue-400 to-cyan-400"></div>
-
-                              <div className="p-4">
-                                <div className="flex items-start gap-3">
-                                  <div className={`p-2 rounded-lg ${isDarkMode ? "bg-blue-500/10" : "bg-blue-50"}`}>
-                                    <TrendingUp
-                                      className={`w-4 h-4 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}
-                                    />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className={`text-sm font-semibold mb-2 ${textClass}`}>Market Sentiment</h3>
-                                    <p className={`${mutedTextClass} text-xs leading-relaxed line-clamp-3`}>
-                                      {parsedAnalysis.marketSentiment}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Key Insights Card */}
-                          {parsedAnalysis.insights && parsedAnalysis.insights.length > 0 && (
-                            <div
-                              className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-[1.01] hover:shadow-md cursor-pointer ${
-                                isDarkMode
-                                  ? "bg-slate-800/60 border border-slate-700/40 hover:bg-slate-800/80"
-                                  : "bg-white/90 border border-slate-200/60 hover:bg-white"
-                              }`}
-                            >
-                              {/* Colored top border */}
-                              <div className="h-1 bg-gradient-to-r from-amber-400 to-orange-400"></div>
-
-                              <div className="p-4">
-                                <div className="flex items-start gap-3">
-                                  <div className={`p-2 rounded-lg ${isDarkMode ? "bg-amber-500/10" : "bg-amber-50"}`}>
-                                    <Target className={`w-4 h-4 ${isDarkMode ? "text-amber-400" : "text-amber-600"}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className={`text-sm font-semibold mb-3 ${textClass}`}>Key Insights</h3>
-                                    <div className="space-y-2">
-                                      {parsedAnalysis.insights.slice(0, 2).map((insight, index) => (
-                                        <div key={index} className="flex items-start gap-2">
-                                          <div
-                                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium mt-0.5 flex-shrink-0 ${
-                                              isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-100 text-slate-600"
-                                            }`}
-                                          >
-                                            {index + 1}
-                                          </div>
-                                          <p className={`${mutedTextClass} text-xs leading-relaxed flex-1`}>
-                                            {insight}
-                                          </p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Market Cap Analysis */}
-                          {capAnalysisData && (
-                            <div
-                              className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-[1.01] hover:shadow-md cursor-pointer ${
-                                isDarkMode
-                                  ? "bg-slate-800/60 border border-slate-700/40 hover:bg-slate-800/80"
-                                  : "bg-white/90 border border-slate-200/60 hover:bg-white"
-                              }`}
-                            >
-                              <div className="p-4">
-                                <div className="flex items-start gap-3 mb-4">
-                                  <div className={`p-2 rounded-lg ${isDarkMode ? "bg-purple-500/10" : "bg-purple-50"}`}>
-                                    <Gem className={`w-4 h-4 ${isDarkMode ? "text-purple-400" : "text-purple-600"}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className={`text-sm font-semibold ${textClass}`}>Market Cap Gems 💎</h3>
-                                    <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-600"} mt-1`}>
-                                      Discover promising coins across market caps
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                  {Object.entries(capAnalysisData).map(([category, data]: [string, any]) => {
-                                    if (!data?.gems || data.gems.length === 0) return null
-
-                                    const categoryColors = {
-                                      "Low Cap": {
-                                        badge: isDarkMode
-                                          ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
-                                          : "bg-purple-100 text-purple-700 border-purple-200",
-                                        gradient: "from-purple-500 to-purple-600",
-                                        dot: "bg-purple-500",
-                                      },
-                                      "Mid Cap": {
-                                        badge: isDarkMode
-                                          ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                                          : "bg-blue-100 text-blue-700 border-blue-200",
-                                        gradient: "from-blue-500 to-blue-600",
-                                        dot: "bg-blue-500",
-                                      },
-                                      "High Cap": {
-                                        badge: isDarkMode
-                                          ? "bg-teal-500/20 text-teal-300 border-teal-500/30"
-                                          : "bg-teal-100 text-teal-700 border-teal-200",
-                                        gradient: "from-teal-500 to-teal-600",
-                                        dot: "bg-teal-500",
-                                      },
-                                    }
-
-                                    const colors =
-                                      categoryColors[category as keyof typeof categoryColors] ||
-                                      categoryColors["Low Cap"]
-
-                                    return (
-                                      <div key={category} className="space-y-3">
-                                        {/* Category Badge */}
-                                        <div className="flex items-center justify-between">
-                                          <div
-                                            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold ${colors.badge}`}
-                                          >
-                                            <div className={`w-2 h-2 rounded-full ${colors.dot}`} />
-                                            {category}
-                                          </div>
-                                          <span
-                                            className={`text-xs ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}
-                                          >
-                                            {data.gems.length} gems
-                                          </span>
-                                        </div>
-
-                                        {/* Gem Cards Grid */}
-                                    <div className="grid grid-cols-3 gap-2">
-                                      {data.gems.slice(0, 3).map((gem: any, index: number) => (
-                                        <div
-                                          key={`${gem.id || gem.symbol}-${index}`}
-                                          className={`group relative overflow-hidden rounded-lg transition-all duration-200 cursor-pointer hover:scale-[1.02] ${
-                                            isDarkMode
-                                              ? "bg-slate-700/60 border border-slate-600/40 hover:bg-slate-700/80"
-                                              : "bg-white/90 border border-slate-200/60 hover:bg-white"
-                                          }`}
-                                        >
-                                          <div className="p-2">
-                                            <div className="flex items-center gap-2">
-                                              {/* Text block */}
-                                              <div className="min-w-0 flex-1">
-                                                <div className={`text-[11px] font-bold ${textClass} truncate`} title={gem.name}>
-                                                  {gem.name || gem.symbol}
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                  <div className={`text-[10px] ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
-                                                    {gem.price ? (gem.price < 0.01 ? `$${gem.price.toFixed(6)}` : gem.price < 1 ? `$${gem.price.toFixed(4)}` : gem.price < 100 ? `$${gem.price.toFixed(2)}` : `$${gem.price.toLocaleString()}`) : "N/A"}
-                                                  </div>
-                                                  {gem.priceChange24h !== undefined && (
-                                                    <div className="flex items-center gap-0.5">
-                                                      {gem.priceChange24h >= 0 ? (
-                                                        <TrendingUp className="w-2 h-2 text-green-500" />
-                                                      ) : (
-                                                        <TrendingDown className="w-2 h-2 text-red-500" />
-                                                      )}
-                                                      <span className={`text-[10px] ${gem.priceChange24h >= 0 ? "text-green-500" : "text-red-500"}`}>
-                                                        {gem.priceChange24h >= 0 ? "+" : ""}
-                                                        {gem.priceChange24h.toFixed(1)}%
-                                                      </span>
-                                                    </div>
-                                                  )}
-                                                </div>
-                                                <div className={`text-[10px] ${isDarkMode ? "text-slate-400" : "text-slate-600"} truncate`}>
-                                                  MC {gem.marketCap ? `$${(gem.marketCap as number).toLocaleString()}` : "N/A"}
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                  <span className={`text-[10px] ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>Project Health</span>
-                                                  <span className={`text-[11px] font-bold ${
-                                                    (gem.beatScore || gem.compositeScore || 0) >= 80
-                                                      ? "text-green-500"
-                                                      : (gem.beatScore || gem.compositeScore || 0) >= 60
-                                                        ? "text-blue-500"
-                                                        : (gem.beatScore || gem.compositeScore || 0) >= 40
-                                                          ? "text-yellow-500"
-                                                          : (gem.beatScore || gem.compositeScore || 0) >= 20
-                                                            ? "text-orange-500"
-                                                            : "text-red-500"
-                                                  }`}>
-                                                    {Math.round(gem.beatScore || gem.compositeScore || 0)}/100
-                                                  </span>
-                                                </div>
-                                              </div>
-                                              {/* Logo on right */}
-                                              <div className="flex-shrink-0">
-                                                {(() => {
-                                                  const src = gem.logoUrl || (gem.logoStoragePath ? `https://cocricoin.b-cdn.net/${gem.logoStoragePath}` : null)
-                                                  return src ? (
-                                                    <img
-                                                    src={src}
-                                                    alt={`${gem.name} logo`}
-                                                    className="w-7 h-7 rounded-md shadow-sm"
-                                                    onError={(e) => {
-                                                      const target = e.currentTarget as HTMLImageElement
-                                                      target.src = "/placeholder.svg"
-                                                    }}
-                                                    />
-                                                  ) : (
-                                                  <div className={`w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-bold bg-gradient-to-br ${colors.gradient} text-white shadow-sm`}>
-                                                    {gem.symbol ? gem.symbol.slice(0, 2).toUpperCase() : <Gem className="w-3 h-3" />}
-                                                  </div>
-                                                  )
-                                                })()}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Migration Alerts */}
-                          {parsedAnalysis.migration && (
-                            <div
-                              className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-[1.01] hover:shadow-md cursor-pointer ${
-                                isDarkMode
-                                  ? "bg-red-900/20 border border-red-800/40 hover:bg-red-900/30"
-                                  : "bg-red-50/90 border border-red-200/60 hover:bg-red-50"
-                              }`}
-                            >
-                              {/* Colored top border */}
-                              <div className="h-1 bg-gradient-to-r from-red-400 to-rose-400"></div>
-
-                              <div className="p-4">
-                                <div className="flex items-start gap-3">
-                                  <div className={`p-2 rounded-lg ${isDarkMode ? "bg-red-500/10" : "bg-red-100"}`}>
-                                    <PieChart className={`w-4 h-4 ${isDarkMode ? "text-red-400" : "text-red-600"}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <h3
-                                      className={`text-sm font-semibold mb-2 ${isDarkMode ? "text-red-300" : "text-red-700"}`}
-                                    >
-                                      Migration Alerts
-                                    </h3>
-                                    <p
-                                      className={`text-xs leading-relaxed line-clamp-3 ${isDarkMode ? "text-red-200" : "text-red-800"}`}
-                                    >
-                                      {parsedAnalysis.migration}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* More Details Button */}
-                          <div className="pt-2">
-                            <Button
-                              onClick={handleDetailedAnalysis}
-                              disabled={detailedLoading}
-                              className={`w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl py-2.5 text-xs font-medium shadow-md hover:shadow-lg transition-all duration-300 hover:scale-[1.01] border-0`}
-                            >
-                              {detailedLoading ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  Getting Detailed Insights...
-                                </>
-                              ) : (
-                                <>
-                                  <TrendingUp className="w-4 h-4 mr-2" />
-                                  More Detailed Insights
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Twitter Sidebar - 25% */}
-                        <div className="w-24 flex-shrink-0">
+                      <div className="space-y-3">
+                        {/* Market Sentiment */}
+                        {parsedAnalysis.marketSentiment && (
                           <div
-                            className={`sticky top-0 p-3 rounded-xl transition-all duration-300 ${
-                              isDarkMode
-                                ? "bg-slate-800/60 border border-slate-700/40"
-                                : "bg-white/90 border border-slate-200/60"
-                            }`}
+                            className={`p-3 rounded-xl ${isDarkMode ? "bg-gradient-to-r from-blue-900/30 to-indigo-900/30 border-blue-700/50" : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200"} border`}
                           >
-                            <h4 className={`text-xs font-semibold mb-3 ${textClass} text-center`}>Share</h4>
+                            <div className="flex items-center gap-2 mb-2">
+                              <TrendingUp className={`w-4 h-4 ${isDarkMode ? "text-blue-400" : "text-blue-600"}`} />
+                              <h3 className={`text-xs font-semibold tracking-wide uppercase ${textClass}`}>Market Sentiment</h3>
+                            </div>
+                            <p className={`${textClass} leading-snug text-xs font-medium opacity-80`}>{parsedAnalysis.marketSentiment}</p>
+                            {/* Tweet Button for Sentiment & Insights */}
+                            <a
+                              href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getRandomTweetText('sentiment', { ...parsedAnalysis, capAnalysis: capAnalysisData }))}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-3 py-1 mt-2 rounded bg-blue-500 text-white hover:bg-blue-600 transition font-semibold shadow-sm"
+                              title="Share market sentiment & insights on Twitter"
+                            >
+                              <Twitter className="w-4 h-4" />
+                              Tweet sentiment & insights
+                            </a>
+                          </div>
+                        )}
+                        {/* Top Insights */}
+                        {parsedAnalysis.insights && parsedAnalysis.insights.length > 0 && (
+                          <div className={`p-3 rounded-xl ${cardClass} border`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Target className={`w-4 h-4 ${isDarkMode ? "text-amber-400" : "text-amber-600"}`} />
+                              <h3 className={`text-xs font-semibold tracking-wide uppercase ${textClass}`}>Key Market Insights</h3>
+                            </div>
                             <div className="space-y-2">
-                              {/* Sentiment Tweet */}
-                              {parsedAnalysis.marketSentiment && (
-                                <a
-                                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getRandomTweetText("sentiment", { ...parsedAnalysis, capAnalysis: capAnalysisData }))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group flex flex-col items-center gap-1.5 p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
-                                  title="Share sentiment"
-                                >
-                                  <Twitter className="w-3.5 h-3.5" />
-                                  <span className="text-xs font-medium">Sentiment</span>
-                                </a>
-                              )}
-
-                              {/* Gems Tweet */}
-                              {(capAnalysisData || parsedAnalysis.migration) && (
-                                <a
-                                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getRandomTweetText("gems", { ...parsedAnalysis, capAnalysis: capAnalysisData }))}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group flex flex-col items-center gap-1.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
-                                  title="Share gems & risks"
-                                >
-                                  <Twitter className="w-3.5 h-3.5" />
-                                  <span className="text-xs font-medium">Gems</span>
-                                </a>
-                              )}
+                              {parsedAnalysis.insights.slice(0, 2).map((insight, index) => (
+                                <div key={index} className="flex items-start gap-2">
+                                  <div
+                                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.8rem] font-bold ${
+                                      index === 0
+                                        ? isDarkMode
+                                          ? "bg-green-500/20 text-green-300"
+                                          : "bg-green-100 text-green-700"
+                                        : isDarkMode
+                                          ? "bg-blue-500/20 text-blue-300"
+                                          : "bg-blue-100 text-blue-700"
+                                    }`}
+                                  >
+                                    {index + 1}
+                                  </div>
+                                  <p className={`${textClass} text-xs leading-snug flex-1 font-medium opacity-90`}>{insight}</p>
+                                </div>
+                              ))}
                             </div>
                           </div>
+                        )}
+                        {/* Cap Category Cards: Low Cap, Mid Cap, High Cap */}
+                        {capAnalysisData && (
+                          <ElegantMarketCapAnalysis capAnalysis={capAnalysisData} isDarkMode={isDarkMode} />
+                        )}
+                        {/* Migration & Exchange Alerts */}
+                        {parsedAnalysis.migration && (
+                          <div className={`p-4 rounded-xl bg-gradient-to-r from-pink-500/80 to-yellow-400/80 border-0 shadow-xl flex items-start gap-3 my-2`}> 
+                            <PieChart className="w-6 h-6 text-white mt-1" />
+                            <div>
+                              <h3 className="text-xs font-semibold tracking-wide uppercase text-white mb-1">Migration & Exchange Alerts</h3>
+                              <p className="text-white text-xs whitespace-pre-line opacity-90">{parsedAnalysis.migration}</p>
+                            </div>
+                          </div>
+                        )}
+                        {/* Tweet Button for Gems & Risks */}
+                        {(capAnalysisData || parsedAnalysis.migration) && (parsedAnalysis.migration && parsedAnalysis.migration.trim().length > 0) && (
+                          <a
+                            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(getRandomTweetText('gems', { ...parsedAnalysis, capAnalysis: capAnalysisData }))}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-3 py-1 mt-2 rounded bg-purple-600 text-white hover:bg-purple-700 transition font-semibold shadow-sm"
+                            title="Share gems & risks on Twitter"
+                          >
+                            <Twitter className="w-4 h-4" />
+                            Tweet gems & risks
+                          </a>
+                        )}
+                        {/* More Details Button */}
+                        <div className="pt-2">
+                          <Button
+                            onClick={handleDetailedAnalysis}
+                            disabled={detailedLoading}
+                            className={`w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl py-2 text-xs font-semibold shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]`}
+                          >
+                            {detailedLoading ? (
+                              <>
+                                <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                                Getting Detailed Insights...
+                              </>
+                            ) : (
+                              <>
+                                <TrendingUp className="w-3 h-3 mr-2" />
+                                More Detailed Insights
+                              </>
+                            )}
+                          </Button>
                         </div>
                       </div>
                     )}
