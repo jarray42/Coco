@@ -1,8 +1,9 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { OptimizedCoinLink } from "./optimized-coin-link"
 import { ClickableSocialLink } from "./clickable-social-link"
 import { ElegantTooltip } from "./elegant-tooltip"
 import { ElegantPixelatedHeart } from "./elegant-pixelated-heart"
@@ -13,9 +14,21 @@ import { formatPrice, formatNumber } from "../utils/beat-calculator"
 import type { CryptoData } from "../utils/beat-calculator"
 
 import type { AuthUser } from "../utils/supabase-auth"
-import { Star, Users, TrendingUp, TrendingDown, AlertTriangle, Megaphone, X, Bell, Activity, Minus, Plus, Shield, Info } from "lucide-react"
+import {
+  Star,
+  Users,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  X,
+  Bell,
+  Activity,
+  Minus,
+  Plus,
+  Shield,
+  Info,
+} from "lucide-react"
 import { ElasticSlider } from "./elastic-slider"
-import { prefetchCoinDetails } from "../actions/fetch-coin-details"
 
 interface CompactCoinRowProps {
   data: CryptoData
@@ -90,7 +103,9 @@ export function CompactCoinRow({
   // Navigation loading state - REMOVED since we're making navigation immediate
 
   // Add state for closed status by alert type
-  const [closedStatusByType, setClosedStatusByType] = useState<Record<string, { closed: boolean, reason: string | null }>>({})
+  const [closedStatusByType, setClosedStatusByType] = useState<
+    Record<string, { closed: boolean; reason: string | null }>
+  >({})
 
   // Add removeAlarmsLoading and removeAlarmsError state
   const [removeAlarmsLoading, setRemoveAlarmsLoading] = useState(false)
@@ -126,7 +141,9 @@ export function CompactCoinRow({
       setLoading(true)
       setError(null)
       setSuccess(null)
-      fetch(`/api/coin-alerts?coin_id=${data.coingecko_id}&alert_type=${alertType}`)
+      fetch(`/api/coin-alerts?coin_id=${data.coingecko_id}&alert_type=${alertType}&ts=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      )
         .then((res) => res.json())
         .then((res) => {
           setPoolStatus(res)
@@ -148,16 +165,16 @@ export function CompactCoinRow({
       setNotificationLoading(true)
       setNotificationError(null)
       fetch(`/api/user-alerts?coin_id=${data.coingecko_id}`, {
-        headers: { 'Authorization': `Bearer ${user.id}` }
+        headers: { Authorization: `Bearer ${user.id}` },
       })
-        .then(res => res.json())
-        .then(alerts => {
+        .then((res) => res.json())
+        .then((alerts) => {
           // Set existing thresholds if any
           alerts.forEach((alert: any) => {
-            if (alert.alert_type === 'health_score') setHealthThreshold(alert.threshold_value)
-            if (alert.alert_type === 'consistency_score') setConsistencyThreshold(alert.threshold_value)
-            if (alert.alert_type === 'price_drop') setPriceDropThreshold(alert.threshold_value)
-            if (alert.alert_type === 'migration') setEnableMigrationAlerts(alert.is_active)
+            if (alert.alert_type === "health_score") setHealthThreshold(alert.threshold_value)
+            if (alert.alert_type === "consistency_score") setConsistencyThreshold(alert.threshold_value)
+            if (alert.alert_type === "price_drop") setPriceDropThreshold(alert.threshold_value)
+            if (alert.alert_type === "migration") setEnableMigrationAlerts(alert.is_active)
           })
           setHasActiveAlerts(alerts.some((a: any) => a.is_active))
         })
@@ -188,20 +205,21 @@ export function CompactCoinRow({
 
   // Use batch-loaded verified alerts data instead of individual API calls
 
-  // Function to refresh pool status
+  // Function to refresh pool status (returns fresh data to avoid stale state reads)
   const refreshPoolStatus = async () => {
     try {
-      const res = await fetch(`/api/coin-alerts?coin_id=${data.coingecko_id}&alert_type=${alertType}`)
+      const res = await fetch(`/api/coin-alerts?coin_id=${data.coingecko_id}&alert_type=${alertType}&ts=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      )
       const result = await res.json()
       setPoolStatus(result)
-      // Only update hasUserStaked if we don't already have batch data
-      // This prevents overwriting the batch-loaded state unnecessarily
-      if (hasStaked === undefined) {
-        const userHasStaked = !!result.alerts.find((a: any) => a.user_id === user?.id)
-        setHasUserStaked(userHasStaked)
-      }
+      // Determine stake only from pending alerts so it matches totalEggs and progress
+      const userHasPendingStake = !!(result.alerts || []).find((a: any) => a.user_id === user?.id && a.status === 'pending')
+      setHasUserStaked(userHasPendingStake)
+      return { result, userHasPendingStake }
     } catch (error) {
-      console.error('Failed to refresh pool status:', error)
+      console.error("Failed to refresh pool status:", error)
+      return { result: null, userHasPendingStake: hasUserStaked }
     }
   }
 
@@ -225,12 +243,25 @@ export function CompactCoinRow({
       })
       const result = await res.json()
       if (!res.ok) throw new Error(result.error || "Failed to submit alert")
-      setSuccess("Alert submitted! Thank you for contributing.")
+      
+      // Handle both creation and update cases
+      if (result.created) {
+        setSuccess("Alert submitted! Thank you for contributing.")
+      } else if (result.updated) {
+        setSuccess("Alert updated successfully!")
+      } else {
+        setSuccess("Alert processed successfully!")
+      }
       setHasUserStaked(true)
-      
-      // Refresh pool status immediately after successful submission
-      await refreshPoolStatus()
-      
+
+      // Refresh with brief retries to avoid read-after-write lag
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { result, userHasPendingStake } = await refreshPoolStatus()
+        const eggs = result?.totalEggs ?? 0
+        if (eggs > 0 || userHasPendingStake) break
+        await new Promise((r) => setTimeout(r, 200))
+      }
+
       // Invalidate user data cache to reflect the change
       if (user) {
         const keysToRemove: string[] = []
@@ -240,7 +271,7 @@ export function CompactCoinRow({
             keysToRemove.push(key)
           }
         }
-        keysToRemove.forEach(key => sessionStorage.removeItem(key))
+        keysToRemove.forEach((key) => sessionStorage.removeItem(key))
       }
       setProofLink("")
     } catch (err: any) {
@@ -257,36 +288,36 @@ export function CompactCoinRow({
     setNotificationLoading(true)
     setNotificationError(null)
     setNotificationSuccess(null)
-    
+
     try {
       const alerts = [
-        { alert_type: 'health_score', threshold_value: healthThreshold, is_active: true },
-        { alert_type: 'consistency_score', threshold_value: consistencyThreshold, is_active: true },
-        { alert_type: 'price_drop', threshold_value: priceDropThreshold, is_active: true },
-        { alert_type: 'migration', threshold_value: null, is_active: enableMigrationAlerts },
+        { alert_type: "health_score", threshold_value: healthThreshold, is_active: true },
+        { alert_type: "consistency_score", threshold_value: consistencyThreshold, is_active: true },
+        { alert_type: "price_drop", threshold_value: priceDropThreshold, is_active: true },
+        { alert_type: "migration", threshold_value: null, is_active: enableMigrationAlerts },
       ]
 
       for (const alert of alerts) {
-        const res = await fetch('/api/user-alerts', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user?.id}`
+        const res = await fetch("/api/user-alerts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${user?.id}`,
           },
           body: JSON.stringify({
             coin_id: data.coingecko_id,
-            ...alert
-          })
+            ...alert,
+          }),
         })
         if (!res.ok) {
           const errorData = await res.json()
-          throw new Error(errorData.error || 'Failed to save alert settings')
+          throw new Error(errorData.error || "Failed to save alert settings")
         }
       }
 
       setNotificationSuccess("Notification settings saved!")
       setHasActiveAlerts(true)
-      
+
       // Invalidate user data cache to reflect the change
       if (user) {
         const keysToRemove: string[] = []
@@ -296,26 +327,26 @@ export function CompactCoinRow({
             keysToRemove.push(key)
           }
         }
-        keysToRemove.forEach(key => sessionStorage.removeItem(key))
+        keysToRemove.forEach((key) => sessionStorage.removeItem(key))
       }
     } catch (err: any) {
       const errorMessage = err.message
       // Check if it's a limit error and add upgrade link
-      if (errorMessage.includes('Maximum number of alerts') && errorMessage.includes('Free plan')) {
+      if (errorMessage.includes("Maximum number of alerts") && errorMessage.includes("Free plan")) {
         setNotificationError(
           <span>
-            Alert limit reached (20/20). 
-            <a 
-              href="/plans" 
+            Alert limit reached (20/20).
+            <a
+              href="/plans"
               className="text-purple-500 hover:text-purple-600 underline font-medium ml-1"
               onClick={(e) => {
                 e.stopPropagation()
-                window.location.href = '/plans'
+                window.location.href = "/plans"
               }}
             >
               Upgrade to Pro for 200 alerts
             </a>
-          </span>
+          </span>,
         )
       } else {
         setNotificationError(errorMessage)
@@ -328,26 +359,29 @@ export function CompactCoinRow({
   // Check for closed status for all alert types when expanded
   useEffect(() => {
     if (expandedAlert) {
-      const types = ['migration', 'delisting', 'rebrand']
-      types.forEach(type => {
+      const types = ["migration", "delisting", "rebrand"]
+      types.forEach((type) => {
         fetch(`/api/coin-alerts?coin_id=${data.coingecko_id}&alert_type=${type}`)
-          .then(res => res.json())
-          .then(res => {
-            const closedAlert = (res.alerts || []).find((a: any) => (a.status === 'verified' || a.status === 'rejected') && a.archived === false)
-            setClosedStatusByType(prev => ({
+          .then((res) => res.json())
+          .then((res) => {
+            const closedAlert = (res.alerts || []).find(
+              (a: any) => (a.status === "verified" || a.status === "rejected") && a.archived === false,
+            )
+            setClosedStatusByType((prev) => ({
               ...prev,
               [type]: closedAlert
                 ? {
                     closed: true,
-                    reason: closedAlert.status === 'verified'
-                      ? `The ${type.charAt(0).toUpperCase() + type.slice(1)} pool has been verified and is now closed.`
-                      : `The ${type.charAt(0).toUpperCase() + type.slice(1)} pool was rejected and is now closed.`
+                    reason:
+                      closedAlert.status === "verified"
+                        ? `The ${type.charAt(0).toUpperCase() + type.slice(1)} pool has been verified and is now closed.`
+                        : `The ${type.charAt(0).toUpperCase() + type.slice(1)} pool was rejected and is now closed.`,
                   }
-                : { closed: false, reason: null }
+                : { closed: false, reason: null },
             }))
           })
           .catch(() => {
-            setClosedStatusByType(prev => ({ ...prev, [type]: { closed: false, reason: null } }))
+            setClosedStatusByType((prev) => ({ ...prev, [type]: { closed: false, reason: null } }))
           })
       })
     }
@@ -363,14 +397,14 @@ export function CompactCoinRow({
     setRemoveAlarmsError(null)
     try {
       const res = await fetch(`/api/user-alerts?coin_id=${data.coingecko_id}`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
-          'Authorization': `Bearer ${user.id}`
-        }
+          Authorization: `Bearer ${user.id}`,
+        },
       })
-      if (!res.ok) throw new Error('Failed to remove alerts')
+      if (!res.ok) throw new Error("Failed to remove alerts")
       setHasActiveAlerts(false)
-      setNotificationSuccess('All alerts removed!')
+      setNotificationSuccess("All alerts removed!")
       setNotificationError(null)
     } catch (err: any) {
       setRemoveAlarmsError(err.message)
@@ -408,7 +442,7 @@ export function CompactCoinRow({
                 alt={`${data.name} logo`}
                 className="w-8 h-8 rounded-xl shadow-sm transition-all duration-300"
                 onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none"
+                  ;(e.currentTarget as HTMLImageElement).style.display = "none"
                   const next = e.currentTarget.nextElementSibling as HTMLElement | null
                   if (next) next.style.display = "flex"
                 }}
@@ -429,7 +463,7 @@ export function CompactCoinRow({
                       <div className="text-center">
                         <div className="text-sm font-semibold text-red-700">Verified Alerts</div>
                         <div className="text-xs mt-1">
-                          {[...new Set(verifiedAlerts)].map(type => (
+                          {[...new Set(verifiedAlerts)].map((type) => (
                             <div key={type}>{type.charAt(0).toUpperCase() + type.slice(1)} alert verified</div>
                           ))}
                         </div>
@@ -448,7 +482,9 @@ export function CompactCoinRow({
             <div className={`font-semibold text-sm ${textClass} truncate`} title={data.name}>
               {data.name}
             </div>
-            <div className={`text-xs ${mutedTextClass} uppercase font-medium tracking-wider truncate`}>{data.symbol}</div>
+            <div className={`text-xs ${mutedTextClass} uppercase font-medium tracking-wider truncate`}>
+              {data.symbol}
+            </div>
           </div>
         </div>
 
@@ -494,10 +530,7 @@ export function CompactCoinRow({
         </div>
 
         {/* GitHub Stars - NOT clickable to coin page */}
-        <div 
-          className="flex-shrink-0 w-24 flex items-center"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex-shrink-0 w-24 flex items-center" onClick={(e) => e.stopPropagation()}>
           <ClickableSocialLink
             url={(data as any).github_url || null}
             value={data.github_stars ?? null}
@@ -509,10 +542,7 @@ export function CompactCoinRow({
         </div>
 
         {/* Twitter Followers - NOT clickable to coin page */}
-        <div 
-          className="flex-shrink-0 w-24 flex items-center"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex-shrink-0 w-24 flex items-center" onClick={(e) => e.stopPropagation()}>
           <ClickableSocialLink
             url={(data as any).twitter_url || null}
             value={data.twitter_followers ?? null}
@@ -524,20 +554,14 @@ export function CompactCoinRow({
         </div>
 
         {/* Health Score - NOT clickable to coin page */}
-        <div 
-          className="flex-shrink-0 w-32 flex items-center justify-center"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex-shrink-0 w-32 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
           <CuteHeartTooltip score={beatScore} isDarkMode={isDarkMode}>
             <ElegantPixelatedHeart score={beatScore} isDarkMode={isDarkMode} size="sm" />
           </CuteHeartTooltip>
         </div>
 
         {/* Consistency Score - COMPLETELY ISOLATED */}
-        <div 
-          className="flex-shrink-0 w-32 flex items-center justify-center"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex-shrink-0 w-32 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
           {consistencyScore !== undefined ? (
             <ConsistencyScoreDisplay
               score={consistencyScore}
@@ -552,10 +576,7 @@ export function CompactCoinRow({
 
         {/* Portfolio Wallet Icon - NOT clickable to coin page */}
         {user && (
-          <div 
-            className="flex-shrink-0 w-16 flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex-shrink-0 w-16 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             <PortfolioWalletIcon
               user={user}
               coinId={data.coingecko_id}
@@ -569,7 +590,7 @@ export function CompactCoinRow({
 
         {/* Bell Icon - Notifications */}
         {user && (
-          <div 
+          <div
             className="flex-shrink-0 w-12 flex items-center justify-center ml-2"
             onClick={(e) => e.stopPropagation()}
           >
@@ -612,8 +633,8 @@ export function CompactCoinRow({
                   className={`rounded-full p-1 hover:bg-blue-100/60 active:scale-95 transition-all duration-150 ${expandedNotification ? "bg-blue-200/80" : ""}`}
                   aria-label="Open notification setup"
                   tabIndex={0}
-                  onFocus={e => e.currentTarget.classList.add('ring-2','ring-blue-400')}
-                  onBlur={e => e.currentTarget.classList.remove('ring-2','ring-blue-400')}
+                  onFocus={(e) => e.currentTarget.classList.add("ring-2", "ring-blue-400")}
+                  onBlur={(e) => e.currentTarget.classList.remove("ring-2", "ring-blue-400")}
                 >
                   <span className="sr-only">Open notification setup</span>
                   <img
@@ -629,7 +650,7 @@ export function CompactCoinRow({
 
         {/* Whistle Icon - Actions */}
         {user && (
-          <div 
+          <div
             className="flex-shrink-0 w-12 flex items-center justify-center ml-2"
             onClick={(e) => e.stopPropagation()}
           >
@@ -669,15 +690,15 @@ export function CompactCoinRow({
                 className={`rounded-full p-1 hover:bg-yellow-100/60 active:scale-95 transition-all duration-150 ${expandedAlert ? "bg-yellow-200/80" : ""}`}
                 aria-label="Open alert form"
                 tabIndex={0}
-                onFocus={e => e.currentTarget.classList.add('ring-2','ring-yellow-400')}
-                onBlur={e => e.currentTarget.classList.remove('ring-2','ring-yellow-400')}
+                onFocus={(e) => e.currentTarget.classList.add("ring-2", "ring-yellow-400")}
+                onBlur={(e) => e.currentTarget.classList.remove("ring-2", "ring-yellow-400")}
               >
                 <span className="sr-only">Open alert form</span>
                 <img
                   src={hasUserStaked ? "/Mega2.ico" : "/Mega1.ico"}
                   alt={hasUserStaked ? "Alerted" : "Report issue"}
                   className="w-6 h-6 transition-all duration-300"
-                  style={{ transform: 'scale(1.23)' }}
+                  style={{ transform: "scale(1.23)" }}
                 />
               </button>
             </ElegantTooltip>
@@ -711,7 +732,7 @@ export function CompactCoinRow({
         }}
       >
         {expandedNotification && (
-          <div 
+          <div
             className="w-full px-6 pb-6 pt-4 bg-gradient-to-br from-blue-50/90 to-slate-50/90 border-b border-blue-200/50 shadow-lg backdrop-blur-sm animate-fade-in-down rounded-b-xl relative"
             onClick={(e) => {
               e.stopPropagation()
@@ -748,8 +769,8 @@ export function CompactCoinRow({
               <X className="w-4 h-4 text-blue-700" />
             </button>
 
-            <form 
-              className="space-y-2 animate-fade-in" 
+            <form
+              className="space-y-2 animate-fade-in"
               onSubmit={handleNotificationSubmit}
               onClick={(e) => {
                 e.stopPropagation()
@@ -757,13 +778,9 @@ export function CompactCoinRow({
             >
               <div className="flex items-center gap-2 mb-1">
                 <Bell className="w-5 h-5 text-blue-500" />
-                <h3 className="text-base font-bold text-blue-900">
-                  Smart Alerts for {data.symbol}
-                </h3>
+                <h3 className="text-base font-bold text-blue-900">Smart Alerts for {data.symbol}</h3>
                 {hasActiveAlerts && (
-                  <div className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
-                    Active
-                  </div>
+                  <div className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</div>
                 )}
               </div>
 
@@ -840,15 +857,11 @@ export function CompactCoinRow({
                   <span>Alerts check every 30 minutes</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {notificationError && (
-                    <div className="text-red-600 text-xs font-medium">{notificationError}</div>
-                  )}
+                  {notificationError && <div className="text-red-600 text-xs font-medium">{notificationError}</div>}
                   {notificationSuccess && (
                     <div className="text-green-600 text-xs font-medium">{notificationSuccess}</div>
                   )}
-                  {removeAlarmsError && (
-                    <div className="text-red-600 text-xs font-medium">{removeAlarmsError}</div>
-                  )}
+                  {removeAlarmsError && <div className="text-red-600 text-xs font-medium">{removeAlarmsError}</div>}
                   {hasActiveAlerts && (
                     <button
                       type="button"
@@ -856,7 +869,7 @@ export function CompactCoinRow({
                       disabled={removeAlarmsLoading}
                       className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs font-semibold shadow mr-2"
                     >
-                      {removeAlarmsLoading ? 'Removing...' : 'Remove Alarms'}
+                      {removeAlarmsLoading ? "Removing..." : "Remove Alarms"}
                     </button>
                   )}
                   <button
@@ -879,9 +892,7 @@ export function CompactCoinRow({
         aria-hidden={!Boolean(expandedAlert)}
       >
         {expandedAlert && (
-          <div 
-            className="w-full px-6 pb-6 pt-4 bg-gradient-to-br from-yellow-50/90 to-orange-50/90 border-b border-yellow-200/50 shadow-lg backdrop-blur-sm animate-fade-in-down rounded-b-xl relative"
-          >
+          <div className="w-full px-6 pb-6 pt-4 bg-gradient-to-br from-yellow-50/95 via-amber-50/90 to-orange-50/95 dark:from-yellow-900/95 dark:via-amber-900/90 dark:to-orange-900/95 border-b border-yellow-200/60 dark:border-yellow-700/60 shadow-xl backdrop-blur-md animate-fade-in-down rounded-b-xl relative ring-1 ring-yellow-200/50 dark:ring-yellow-700/50">
             {/* Close button */}
             <button
               type="button"
@@ -889,47 +900,43 @@ export function CompactCoinRow({
                 e.stopPropagation()
                 if (onExpandAlert) onExpandAlert()
               }}
-              className="absolute top-2 right-2 p-1 rounded-full hover:bg-yellow-200/80 transition-colors"
+              className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-slate-100/80 dark:hover:bg-slate-700/80 transition-all duration-200 hover:scale-110 group"
               title="Close alert form"
               aria-label="Close alert form"
             >
-              <X className="w-4 h-4 text-yellow-700" />
+              <X className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors" />
             </button>
 
-            <form 
-              className="space-y-2 animate-fade-in" 
-              onSubmit={handleSubmit}
-            >
+            <form className="space-y-2 animate-fade-in" onSubmit={handleSubmit}>
               <div className="flex items-center gap-2 mb-1">
                 <img
                   src="/Mega2.ico"
                   alt="Alert"
-                  className="w-6 h-6"
-                  style={{ transform: 'scale(1.3)' }}
+                  className="w-6 h-6 drop-shadow-sm"
+                  style={{ transform: "scale(1.3)" }}
                 />
-                <h3 className="text-base font-bold text-yellow-900">
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
                   Community Alert Staking Pool for {data.symbol}
                 </h3>
                 {hasUserStaked && (
-                  <div className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                  <div className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full border border-emerald-200 dark:border-emerald-700">
                     Staked
                   </div>
                 )}
                 {verifiedAlerts.includes(alertType) && (
-                  <div className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                  <div className="px-2 py-0.5 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 text-xs font-medium rounded-full border border-violet-200 dark:border-violet-700">
                     Verified ✓
                   </div>
                 )}
               </div>
 
-              {/* Single Row Layout - Three Sections */}
               <div className="flex flex-row gap-3 overflow-x-auto pb-1 items-center">
-                {/* Left Section: Alert Type Dropdown (always visible, fixed width) */}
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 min-w-[220px] max-w-[220px]">
+                {/* Left Section: Alert Type Dropdown */}
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 min-w-[220px] max-w-[220px] shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
                   <div className="flex flex-col gap-2 flex-1">
                     <div className="flex items-center gap-2">
                       <select
-                        className="rounded border px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-400 bg-white/80 text-yellow-900 border-yellow-200 w-full"
+                        className="rounded-lg border px-3 py-2 text-xs focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 bg-white/90 dark:bg-slate-700/90 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-600 w-full transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-500"
                         value={alertType}
                         onChange={(e) => setAlertType(e.target.value)}
                         disabled={loading}
@@ -943,128 +950,148 @@ export function CompactCoinRow({
                   </div>
                 </div>
 
-                {/* If pool is closed, show closed message inline next to dropdown */}
+                {/* If pool is closed, show closed message */}
                 {isCurrentTypeClosed && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-50/80 border border-yellow-100 min-w-0">
-                    <span className="text-sm font-semibold text-yellow-900">Pool Closed</span>
-                    <span className="text-xs text-yellow-800">
-                      {currentTypeClosedReason || 'This alert pool is no longer accepting new stakes.'}
-                      {currentTypeClosedReason && currentTypeClosedReason.toLowerCase().includes('verified') && ' It will be open again after the event launch.'}
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/60 min-w-0 shadow-sm">
+                    <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Pool Closed</span>
+                    <span className="text-xs text-amber-700 dark:text-amber-400">
+                      {currentTypeClosedReason || "This alert pool is no longer accepting new stakes."}
+                      {currentTypeClosedReason &&
+                        currentTypeClosedReason.toLowerCase().includes("verified") &&
+                        " It will be open again after the event launch."}
                     </span>
                   </div>
                 )}
 
                 {/* If pool is not closed, show the rest of the staking UI */}
-                {!isCurrentTypeClosed && <>
-                  {/* Proof Link Input */}
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
-                    <div className="flex flex-col gap-2 flex-1">
-                      <input
-                        type="url"
-                        className="rounded border px-2 py-1 text-xs flex-1 focus:ring-2 focus:ring-yellow-400 bg-white/80 text-yellow-900 border-yellow-200 placeholder-yellow-600"
-                        placeholder="Proof link (tweet, news, etc)"
-                        value={proofLink}
-                        onChange={(e) => setProofLink(e.target.value)}
-                        required
-                        disabled={loading || alreadyAlerted}
-                        aria-label="Proof link"
-                      />
+                {!isCurrentTypeClosed && (
+                  <>
+                    {/* Proof Link Input */}
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
+                      <div className="flex flex-col gap-2 flex-1">
+                        <input
+                          type="url"
+                          className="rounded-lg border px-3 py-2 text-xs flex-1 focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 bg-white/90 dark:bg-slate-700/90 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-600 placeholder-slate-500 dark:placeholder-slate-400 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-500"
+                          placeholder="Proof link (tweet, news, etc)"
+                          value={proofLink}
+                          onChange={(e) => setProofLink(e.target.value)}
+                          required
+                          disabled={loading || alreadyAlerted}
+                          aria-label="Proof link"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  {/* Middle Section: Pool Status Card */}
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
-                    <div className="flex flex-col gap-1 flex-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1">
-                          <span role="img" aria-label="egg" className="text-sm">🥚</span>
-                          <span className="text-xs font-medium text-yellow-900">Pool Status</span>
+                    {/* Pool Status Card */}
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
+                      <div className="flex flex-col gap-1 flex-1">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <span role="img" aria-label="egg" className="text-sm">
+                              🥚
+                            </span>
+                            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Pool Status</span>
+                          </div>
+                          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+                            {poolStatus
+                              ? poolStatus.poolFilled
+                                ? "Filled!"
+                                : `${poolStatus.totalEggs}/${POOL_SIZE}`
+                              : loading
+                                ? "Loading..."
+                                : "0/6"}
+                          </span>
                         </div>
-                        <span className="text-xs text-yellow-700">
-                          {poolStatus ? (
-                            poolStatus.poolFilled ? "Filled!" : `${poolStatus.totalEggs}/${POOL_SIZE}`
-                          ) : (
-                            loading ? "Loading..." : "0/6"
+                        {/* Pool Progress Bar */}
+                        <div className="w-full bg-slate-200/60 dark:bg-slate-700/60 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-blue-400 to-violet-500 h-2 rounded-full transition-all duration-500 shadow-sm"
+                            style={{
+                              width: poolStatus ? `${Math.min(100, (poolStatus.totalEggs / POOL_SIZE) * 100)}%` : "0%",
+                            }}
+                          ></div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                          <span>
+                            {poolStatus
+                              ? (() => {
+                                  const pending = (poolStatus.alerts || []).filter((a: any) => a.status === 'pending')
+                                  return `${pending.length} staker${pending.length !== 1 ? 's' : ''}`
+                                })()
+                              : "No stakers"}
+                          </span>
+                          {poolStatus && (poolStatus.alerts || []).some((a: any) => a.user_id === user?.id && a.status === 'pending') && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ You: 2🥚</span>
                           )}
-                        </span>
-                      </div>
-                      {/* Pool Progress Bar */}
-                      <div className="w-full bg-yellow-200/60 rounded-full h-1.5">
-                        <div 
-                          className="bg-gradient-to-r from-yellow-400 to-orange-400 h-1.5 rounded-full transition-all duration-300"
-                          style={{ 
-                            width: poolStatus 
-                              ? `${Math.min(100, (poolStatus.totalEggs / POOL_SIZE) * 100)}%` 
-                              : '0%'
-                          }}
-                        ></div>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-yellow-700">
-                        <span>
-                          {poolStatus ? `${poolStatus.alerts.length} staker${poolStatus.alerts.length !== 1 ? 's' : ''}` : "No stakers"}
-                        </span>
-                        {hasUserStaked && (
-                          <span className="text-green-600 font-medium">✓ You: 2🥚</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Right Section: Egg Info & Submit */}
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
-                    <div className="flex flex-col gap-2 flex-1">
-                      {!hasUserStaked && (
-                        <div className="flex items-center gap-1 text-xs text-yellow-800">
-                          <span role="img" aria-label="egg" className="text-sm">🥚</span>
-                          <span className="font-medium">Stake 2 eggs</span>
-                          <span className="text-yellow-600">• 2x if verified!</span>
                         </div>
-                      )}
-                      {/* Only show staking button if current type is not closed */}
-                      <button
-                        type="submit"
-                        disabled={loading || hasUserStaked}
-                        className="w-full px-3 py-1.5 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs font-semibold shadow flex items-center justify-center gap-1"
-                      >
-                        {loading ? (
-                          "Staking..."
-                        ) : hasUserStaked ? (
-                          <>
-                            <span>✓</span>
-                            <span>Staked</span>
-                          </>
-                        ) : (
-                          <>
-                            <span role="img" aria-label="egg">🥚</span>
-                            <span>Stake Eggs</span>
-                          </>
-                        )}
-                      </button>
+                      </div>
                     </div>
-                  </div>
-                </>}
+                    {/* Right Section: Egg Info & Submit */}
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
+                      <div className="flex flex-col gap-2 flex-1">
+                        {!hasUserStaked && (
+                          <div className="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
+                            <span role="img" aria-label="egg" className="text-sm">
+                              🥚
+                            </span>
+                            <span className="font-medium">Stake 2 eggs</span>
+                            <span className="text-blue-500 dark:text-blue-400">• 2x if verified!</span>
+                          </div>
+                        )}
+                        {/* Only show staking button if current type is not closed */}
+                        <button
+                          type="submit"
+                          disabled={
+                            loading ||
+                            ((poolStatus?.alerts || []).some((a: any) => a.user_id === user?.id && a.status === 'pending')) ||
+                            poolStatus?.poolFilled
+                          }
+                          className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-xs font-semibold shadow-sm hover:shadow-md flex items-center justify-center gap-1"
+                        >
+                          {loading ? (
+                            "Staking..."
+                          ) : poolStatus?.poolFilled ? (
+                            <>
+                              <span>🔒</span>
+                              <span>Pool Filled</span>
+                            </>
+                          ) : hasUserStaked ? (
+                            <>
+                              <span>✓</span>
+                              <span>Staked</span>
+                            </>
+                          ) : (
+                            <>
+                              <span role="img" aria-label="egg">
+                                🥚
+                              </span>
+                              <span>Stake Eggs</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Bottom Info Row: only show if pool is not closed */}
               {!isCurrentTypeClosed && (
-                <div className="flex items-center justify-between pt-2 border-t border-yellow-100 mt-2">
-                  <div className="flex items-center gap-2 text-xs text-yellow-700">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200/60 dark:border-slate-700/60 mt-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                     <Info className="w-4 h-4" />
                     <span>Pools need 6 eggs to activate • Double rewards when an upcoming event is verified</span>
                     <a
                       href="/faqs"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-2 px-2 py-0.5 rounded-full bg-yellow-100 hover:bg-yellow-200 text-yellow-900 font-semibold transition-colors text-xs shadow-sm border border-yellow-200 underline underline-offset-2 decoration-yellow-500 hover:decoration-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      className="ml-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-semibold transition-colors text-xs shadow-sm border border-slate-200 dark:border-slate-600 underline underline-offset-2 decoration-blue-500 hover:decoration-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500"
                     >
                       More info
                     </a>
                   </div>
                   <div className="flex items-center gap-2">
-                    {error && (
-                      <div className="text-red-600 text-xs font-medium">{error}</div>
-                    )}
-                    {success && (
-                      <div className="text-green-600 text-xs font-medium">{success}</div>
-                    )}
+                    {error && <div className="text-red-600 text-xs font-medium">{error}</div>}
+                    {success && <div className="text-green-600 text-xs font-medium">{success}</div>}
                   </div>
                 </div>
               )}

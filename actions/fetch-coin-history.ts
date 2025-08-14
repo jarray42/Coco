@@ -21,12 +21,13 @@ export interface CoinHistoryData {
 
 
 
-// Function to fetch historical data from Bunny CDN
-async function fetchHistoryFromBunny(coinId: string): Promise<CoinHistoryData[]> {
+  // Function to fetch historical data from Bunny CDN
+  async function fetchHistoryFromBunny(coinId: string): Promise<CoinHistoryData[]> {
   try {
     // Use the exact file name format you use on Bunny
-    const cacheBuster = `?t=${Math.floor(Date.now() / 60000)}`; // 1-minute cache buster
-    const url = `${BUNNY_CDN_BASE}/price_history/${coinId}.json${cacheBuster}`;
+    // Add a strong cache buster to always fetch the latest file version from the CDN
+    const cacheBuster = `?t=${Date.now()}&r=${Math.random().toString(36).slice(2)}`
+    const url = `${BUNNY_CDN_BASE}/price_history/${coinId}.json${cacheBuster}`
 
     const response = await fetch(url, {
       method: 'GET',

@@ -15,55 +15,81 @@ export async function POST(req: NextRequest) {
     if (!user_id || !coin_id || !alert_type) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400 })
     }
-    // Check if user already submitted this alert (only non-archived)
-    const { data: existing, error: fetchError } = await supabase
-      .from("coin_alerts")
-      .select("id, eggs_staked, archived")
-      .eq("user_id", user_id)
-      .eq("coin_id", coin_id)
-      .eq("alert_type", alert_type)
-      .eq("archived", false)
-      .maybeSingle()
-    if (fetchError) {
-      return new Response(JSON.stringify({ error: fetchError.message }), { status: 500 })
-    }
-    // Check user quota (eggs)
+    // Check user quota (eggs) first
     const quota = await getUserQuota({ id: user_id, email: "dummy@user.com" })
     if (!quota || quota.eggs < 2) {
       return new Response(JSON.stringify({ error: "Not enough eggs" }), { status: 403 })
     }
-    let result
-    if (existing) {
-      // Already exists: update proof_link if changed
-      const { error: updateError } = await supabase
-        .from("coin_alerts")
-        .update({ proof_link })
-        .eq("id", existing.id)
-      if (updateError) {
-        return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })
-      }
-      result = { updated: true }
-    } else {
-      // New alert: insert and deduct eggs
-      const { error: insertError } = await supabase
-        .from("coin_alerts")
-        .insert({
-          user_id,
-          coin_id,
-          alert_type,
-          proof_link,
-          eggs_staked: 2,
-        })
-      if (insertError) {
+
+    // First, try to insert as a new alert
+    const { data: insertResult, error: insertError } = await supabase
+      .from("coin_alerts")
+      .insert({
+        user_id,
+        coin_id,
+        alert_type,
+        proof_link,
+        eggs_staked: 2,
+        status: 'pending',
+        archived: false
+      })
+      .select('id')
+      .maybeSingle()
+
+    if (insertError) {
+      // Check if it's a duplicate key error
+      if (insertError.code === '23505' && insertError.message.includes('coin_alerts_user_id_coin_id_alert_type_key')) {
+        // Fetch existing alert to determine current state
+        const { data: existing, error: fetchExistingError } = await supabase
+          .from("coin_alerts")
+          .select("id, status, archived")
+          .eq("user_id", user_id)
+          .eq("coin_id", coin_id)
+          .eq("alert_type", alert_type)
+          .single()
+
+        if (fetchExistingError || !existing) {
+          return new Response(JSON.stringify({ error: 'Alert already exists' }), { status: 409 })
+        }
+
+        // Do not allow staking when the pool is verified or rejected (closed)
+        if (existing.status === 'verified') {
+          return new Response(JSON.stringify({ error: 'Pool already verified and closed' }), { status: 409 })
+        }
+        if (existing.status === 'rejected') {
+          return new Response(JSON.stringify({ error: 'Pool was rejected and is closed' }), { status: 409 })
+        }
+
+        // Only allow updating proof for active pending alerts
+        if (existing.status === 'pending' && existing.archived === false) {
+          const { error: updateError } = await supabase
+            .from("coin_alerts")
+            .update({ proof_link })
+            .eq("id", existing.id)
+
+          if (updateError) {
+            return new Response(JSON.stringify({ error: updateError.message }), { status: 500 })
+          }
+
+          return new Response(JSON.stringify({ updated: true }), { status: 200 })
+        }
+
+        // Fallback
+        return new Response(JSON.stringify({ error: 'Alert already exists' }), { status: 409 })
+      } else {
+        // Some other error occurred
         return new Response(JSON.stringify({ error: insertError.message }), { status: 500 })
       }
-      // Deduct eggs directly in user_ai_usage
-      await supabase
-        .from("user_ai_usage")
-        .update({ eggs: quota.eggs - 2 })
-        .eq("user_id", user_id)
-      result = { created: true }
     }
+
+    // If we reach here, the insert was successful (new alert)
+    // Deduct eggs from user quota
+    await supabase
+      .from("user_ai_usage")
+      .update({ eggs: quota.eggs - 2 })
+      .eq("user_id", user_id)
+
+    const result = { created: true }
     return new Response(JSON.stringify(result), { status: 200 })
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
@@ -112,7 +138,8 @@ export async function GET(req: NextRequest) {
       // Only count alerts that are pending (archived already filtered above)
       const pendingAlerts = allAlerts.filter((a: any) => a.status === 'pending')
       const totalEggs = pendingAlerts.reduce((sum: number, a: { eggs_staked?: number }) => sum + (a.eggs_staked || 0), 0)
-      const poolFilled = totalEggs >= 20 // or your POOL_SIZE
+      const POOL_SIZE = 6 // Pool size should match frontend
+      const poolFilled = totalEggs >= POOL_SIZE
       return new Response(JSON.stringify({ alerts: allAlerts, pendingAlerts, totalEggs, poolFilled }), { status: 200 })
     }
 

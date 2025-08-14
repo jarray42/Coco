@@ -200,7 +200,7 @@ export async function getCoinsByIdsFromBunny(coinIds: string[]): Promise<CryptoD
   }
 }
 
-// Get coins filtered by gem score > 40 AND health score > 75
+// Get coins filtered by gem score > 40 AND health score > 70
 export async function getGemFilteredCoinsFromBunny(
   page = 1,
   limit = 50,
@@ -242,11 +242,11 @@ export async function getGemFilteredCoinsFromBunny(
     // Calculate pagination before filtering
     const offset = (page - 1) * limit
 
-    // Filter coins by gem score > 35 AND health score > 70
+    // Filter coins by gem score > 40 AND health score > 70
     const gemFilteredCoins = allCoins.filter(coin => {
       const gemScore = coin.gem_score || 0
       const healthScore = coin.health_score || 0
-      return gemScore > 35 && healthScore > 70
+      return gemScore > 40 && healthScore > 70
     })
 
     // Apply pagination after filtering

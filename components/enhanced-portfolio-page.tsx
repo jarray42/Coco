@@ -174,7 +174,9 @@ export function EnhancedPortfolioPage() {
       const coinId = expandedAlert;
       const types = ['migration', 'delisting', 'rebrand'];
       types.forEach(type => {
-        fetch(`/api/coin-alerts?coin_id=${coinId}&alert_type=${type}`)
+      fetch(`/api/coin-alerts?coin_id=${coinId}&alert_type=${type}&ts=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      )
           .then(res => res.json())
           .then(res => {
             const closedAlert = (res.alerts || []).find((a: any) => (a.status === 'verified' || a.status === 'rejected') && a.archived === false)
@@ -211,7 +213,9 @@ export function EnhancedPortfolioPage() {
     if (expandedAlert) {
       const coinId = expandedAlert;
       const alertType = alertStates[coinId]?.alertType || 'migration';
-      fetch(`/api/coin-alerts?coin_id=${coinId}&alert_type=${alertType}`)
+      fetch(`/api/coin-alerts?coin_id=${coinId}&alert_type=${alertType}&ts=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      )
         .then(res => res.json())
         .then(res => {
           setPoolStatusByCoin(prev => ({ ...prev, [coinId]: res }))
@@ -957,10 +961,42 @@ export function EnhancedPortfolioPage() {
                       })
                       const result = await res.json()
                       if (!res.ok) throw new Error(result.error || "Failed to submit alert")
+                      
+                      // Handle both creation and update cases
+                      let successMessage = "Alert processed successfully!"
+                      if (result.created) {
+                        successMessage = "Alert submitted! Thank you for contributing."
+                      } else if (result.updated) {
+                        successMessage = "Alert updated successfully!"
+                      }
+                      
                       setAlertStates((prev) => ({
                         ...prev,
-                        [item.coingecko_id]: { ...alertState, loading: false, success: "Alert submitted! Thank you for contributing.", hasUserStaked: true },
+                        [item.coingecko_id]: { ...alertState, loading: false, success: successMessage, hasUserStaked: true },
                       }))
+
+                      // Refresh pool status after successful submission
+                      try {
+                        const poolRes = await fetch(`/api/coin-alerts?coin_id=${item.coingecko_id}&alert_type=${alertState.alertType}&ts=${Date.now()}`,
+                          { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+                        )
+                        const poolData = await poolRes.json()
+                        setPoolStatusByCoin(prev => ({ ...prev, [item.coingecko_id]: poolData }))
+                      } catch (poolError) {
+                        console.error("Failed to refresh pool status:", poolError)
+                      }
+
+                      // Invalidate user data cache to reflect the change
+                      if (user) {
+                        const keysToRemove: string[] = []
+                        for (let i = 0; i < sessionStorage.length; i++) {
+                          const key = sessionStorage.key(i)
+                          if (key && key.startsWith(`user_data_${user.id}_`)) {
+                            keysToRemove.push(key)
+                          }
+                        }
+                        keysToRemove.forEach((key) => sessionStorage.removeItem(key))
+                      }
                     } catch (err: any) {
                       setAlertStates((prev) => ({
                         ...prev,
@@ -1346,7 +1382,7 @@ export function EnhancedPortfolioPage() {
 
                       {/* Expanded Alert Staking Row */}
                       {expandedAlert === item.coingecko_id && (
-                        <div className="w-full px-6 pb-6 pt-4 bg-gradient-to-br from-yellow-50/90 to-orange-50/90 border-b border-yellow-200/50 shadow-lg backdrop-blur-sm animate-fade-in-down rounded-b-xl relative">
+                        <div className="w-full px-6 pb-6 pt-4 bg-gradient-to-br from-yellow-50/95 via-amber-50/90 to-orange-50/95 dark:from-yellow-900/95 dark:via-amber-900/90 dark:to-orange-900/95 border-b border-yellow-200/60 dark:border-yellow-700/60 shadow-xl backdrop-blur-md animate-fade-in-down rounded-b-xl relative ring-1 ring-yellow-200/50 dark:ring-yellow-700/50">
                           {/* Close button */}
                           <button
                             type="button"
@@ -1354,11 +1390,11 @@ export function EnhancedPortfolioPage() {
                               e.stopPropagation();
                               setExpandedAlert(null);
                             }}
-                            className="absolute top-2 right-2 p-1 rounded-full hover:bg-yellow-200/80 transition-colors"
+                            className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-slate-100/80 dark:hover:bg-slate-700/80 transition-all duration-200 hover:scale-110 group"
                             title="Close alert form"
                             aria-label="Close alert form"
                           >
-                            <X className="w-4 h-4 text-yellow-700" />
+                            <X className="w-4 h-4 text-slate-600 dark:text-slate-400 group-hover:text-slate-800 dark:group-hover:text-slate-200 transition-colors" />
                           </button>
                           {/* Alert staking form (robust closed pool logic) */}
                           <form 
@@ -1366,28 +1402,33 @@ export function EnhancedPortfolioPage() {
                             onSubmit={handleAlertSubmit}
                           >
                             <div className="flex items-center gap-2 mb-1">
-                              <Megaphone className="w-5 h-5 text-yellow-500" />
-                              <h3 className="text-base font-bold text-yellow-900">
-                                Community Alert Staking Pool for {item.coin_symbol}
+                              <img
+                                src="/Mega2.ico"
+                                alt="Alert"
+                                className="w-6 h-6 drop-shadow-sm"
+                                style={{ transform: "scale(1.3)" }}
+                              />
+                              <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">
+                                Community Alert Staking Pool for {item.coin_symbol || item.coingecko_id.toUpperCase()}
                               </h3>
                               {alertState.hasUserStaked && (
-                                <div className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">
+                                <div className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-xs font-medium rounded-full border border-emerald-200 dark:border-emerald-700">
                                   Staked
                                 </div>
                               )}
                               {alertState.verifiedAlerts && alertState.verifiedAlerts.includes(alertState.alertType) && (
-                                <div className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                                <div className="px-2 py-0.5 bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 text-xs font-medium rounded-full border border-violet-200 dark:border-violet-700">
                                   Verified ✓
                                 </div>
                               )}
                             </div>
                             {/* Alert type dropdown always visible */}
                             <div className="flex flex-row gap-3 overflow-x-auto pb-1 items-center">
-                              <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 min-w-[220px] max-w-[220px]">
+                              <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 min-w-[220px] max-w-[220px] shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
                                 <div className="flex flex-col gap-2 flex-1">
                                   <div className="flex items-center gap-2">
                                     <select
-                                      className="rounded border px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-400 bg-white/80 text-yellow-900 border-yellow-200 w-full"
+                                      className="rounded-lg border px-3 py-2 text-xs focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 bg-white/90 dark:bg-slate-700/90 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-600 w-full transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-500"
                                       value={alertState.alertType}
                                       onChange={e => setAlertStates(prev => ({ ...prev, [item.coingecko_id]: { ...alertState, alertType: e.target.value } }))}
                                       disabled={alertState.loading}
@@ -1402,23 +1443,22 @@ export function EnhancedPortfolioPage() {
                               </div>
                               {/* If pool is closed, show closed message inline next to dropdown */}
                               {closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.closed && (
-                                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-50/80 border border-yellow-100 min-w-0">
-                                  <Megaphone className="w-5 h-5 text-yellow-500" />
-                                  <span className="text-sm font-semibold text-yellow-900">Pool Closed</span>
-                                  <span className="text-xs text-yellow-800">
+                                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/60 min-w-0 shadow-sm">
+                                  <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Pool Closed</span>
+                                  <span className="text-xs text-amber-700 dark:text-amber-400">
                                     {closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.reason || 'This alert pool is no longer accepting new stakes.'}
-                                    {closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.reason && closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.reason?.toLowerCase().includes('verified') && ' It will be open the event launch.'}
+                                    {closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.reason && closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.reason?.toLowerCase().includes('verified') && ' It will be open again after the event launch.'}
                                   </span>
                                 </div>
                               )}
                               {/* If pool is not closed, show the rest of the staking UI */}
                               {!closedStatusByType[item.coingecko_id]?.[alertState.alertType]?.closed && <>
                                 {/* Proof Link Input */}
-                                <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
                                   <div className="flex flex-col gap-2 flex-1">
                                     <input
                                       type="url"
-                                      className="rounded border px-2 py-1 text-xs flex-1 focus:ring-2 focus:ring-yellow-400 bg-white/80 text-yellow-900 border-yellow-200 placeholder-yellow-600"
+                                      className="rounded-lg border px-3 py-2 text-xs flex-1 focus:ring-2 focus:ring-blue-400 dark:focus:ring-blue-500 bg-white/90 dark:bg-slate-700/90 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-600 placeholder-slate-500 dark:placeholder-slate-400 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-500"
                                       placeholder="Proof link (tweet, news, etc)"
                                       value={alertState.proofLink}
                                       onChange={e => setAlertStates(prev => ({ ...prev, [item.coingecko_id]: { ...alertState, proofLink: e.target.value } }))}
@@ -1429,14 +1469,14 @@ export function EnhancedPortfolioPage() {
                                   </div>
                                 </div>
                                 {/* Pool Status Card */}
-                                <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
                                   <div className="flex flex-col gap-1 flex-1">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-1">
                                         <span role="img" aria-label="egg" className="text-sm">🥚</span>
-                                        <span className="text-xs font-medium text-yellow-900">Pool Status</span>
+                                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Pool Status</span>
                                       </div>
-                                      <span className="text-xs text-yellow-700">
+                                      <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
                                         {poolStatusByCoin[item.coingecko_id] ? (
                                           poolStatusByCoin[item.coingecko_id].poolFilled ? "Filled!" : `${poolStatusByCoin[item.coingecko_id].totalEggs}/6`
                                         ) : (
@@ -1444,50 +1484,65 @@ export function EnhancedPortfolioPage() {
                                         )}
                                       </span>
                                     </div>
-                                    <div className="w-full bg-yellow-200/60 rounded-full h-1.5">
-                                      <div 
-                                        className="bg-gradient-to-r from-yellow-400 to-orange-400 h-1.5 rounded-full transition-all duration-300"
-                                        style={{ 
-                                          width: poolStatusByCoin[item.coingecko_id] 
-                                            ? `${Math.min(100, (poolStatusByCoin[item.coingecko_id].totalEggs / 6) * 100)}%` 
-                                            : '0%' 
+                                    {/* Pool Progress Bar */}
+                                    <div className="w-full bg-slate-200/60 dark:bg-slate-700/60 rounded-full h-2">
+                                      <div
+                                        className="bg-gradient-to-r from-blue-400 to-violet-500 h-2 rounded-full transition-all duration-500 shadow-sm"
+                                        style={{
+                                          width: poolStatusByCoin[item.coingecko_id]
+                                            ? `${Math.min(100, (poolStatusByCoin[item.coingecko_id].totalEggs / 6) * 100)}%`
+                                            : '0%',
                                         }}
                                       ></div>
                                     </div>
-                                    <div className="flex items-center justify-between text-xs text-yellow-700">
+                                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                                       <span>
                                         {(() => {
-                                          const alerts = poolStatusByCoin[item.coingecko_id]?.alerts;
-                                          if (Array.isArray(alerts)) {
-                                            const count = alerts.length;
-                                            return `${count} staker${count !== 1 ? 's' : ''}`;
+                                          const ps = poolStatusByCoin[item.coingecko_id]
+                                          if (ps) {
+                                            const pending = Array.isArray(ps.pendingAlerts) ? ps.pendingAlerts : (ps.alerts || []).filter((a: any) => a.status === 'pending')
+                                            const count = pending.length
+                                            return `${count} staker${count !== 1 ? 's' : ''}`
                                           }
-                                          return "No stakers";
+                                          return "No stakers"
                                         })()}
                                       </span>
-                                      {alertState.hasUserStaked && (
-                                        <span className="text-green-600 font-medium">✓ You: 2🥚</span>
-                                      )}
+                                      {(() => {
+                                        const ps = poolStatusByCoin[item.coingecko_id]
+                                        const hasPending = ps ? (ps.alerts || []).some((a: any) => a.user_id === user?.id && a.status === 'pending') : false
+                                        return hasPending ? (
+                                          <span className="text-green-600 font-medium">✓ You: 2🥚</span>
+                                        ) : null
+                                      })()}
                                     </div>
                                   </div>
                                 </div>
                                 {/* Egg Info & Submit */}
-                                <div className="flex items-center gap-2 p-3 rounded-lg bg-yellow-50/80 border border-yellow-100 flex-1 min-w-0">
+                                <div className="flex items-center gap-2 p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60 flex-1 min-w-0 shadow-sm hover:shadow-md transition-all duration-200 hover:bg-white/90 dark:hover:bg-slate-800/90">
                                   <div className="flex flex-col gap-2 flex-1">
-                                    {!alertState.hasUserStaked && (
-                                      <div className="flex items-center gap-1 text-xs text-yellow-800">
+                                    {!((poolStatusByCoin[item.coingecko_id]?.alerts || []).some((a: any) => a.user_id === user?.id && a.status === 'pending')) && (
+                                      <div className="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300">
                                         <span role="img" aria-label="egg" className="text-sm">🥚</span>
                                         <span className="font-medium">Stake 2 eggs</span>
-                                        <span className="text-yellow-600">• 2x if verified!</span>
+                                        <span className="text-blue-500 dark:text-blue-400">• 2x if verified!</span>
                                       </div>
                                     )}
                                     <button
                                       type="submit"
-                                      disabled={alertState.loading || alertState.hasUserStaked}
-                                      className="w-full px-3 py-1.5 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs font-semibold shadow flex items-center justify-center gap-1"
+                                      disabled={
+                                        alertState.loading ||
+                                        ((poolStatusByCoin[item.coingecko_id]?.alerts || []).some((a: any) => a.user_id === user?.id && a.status === 'pending')) ||
+                                        poolStatusByCoin[item.coingecko_id]?.poolFilled
+                                      }
+                                      className="w-full px-4 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-xs font-semibold shadow-sm hover:shadow-md flex items-center justify-center gap-1"
                                     >
                                       {alertState.loading ? (
                                         "Staking..."
+                                      ) : poolStatusByCoin[item.coingecko_id]?.poolFilled ? (
+                                        <>
+                                          <span>🔒</span>
+                                          <span>Pool Filled</span>
+                                        </>
                                       ) : alertState.hasUserStaked ? (
                                         <>
                                           <span>✓</span>

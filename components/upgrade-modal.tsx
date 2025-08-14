@@ -71,7 +71,7 @@ export function UpgradeModal({ isOpen, onClose, user, isDarkMode, onUpgradeSucce
       // Plan 2: Enterprise Pack (yearly equivalent)
       const isYearly = planIndex > 0
 
-      const response = await fetch("/api/checkout-sessions", {
+      const response = await fetch("/api/stripe-checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,7 +83,9 @@ export function UpgradeModal({ isOpen, onClose, user, isDarkMode, onUpgradeSucce
       })
 
       if (!response.ok) {
-        throw new Error("Failed to create checkout session")
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        console.error("Server error details:", errorData)
+        throw new Error(errorData.details || errorData.error || "Failed to create checkout session")
       }
 
       const { url } = await response.json()
@@ -92,7 +94,7 @@ export function UpgradeModal({ isOpen, onClose, user, isDarkMode, onUpgradeSucce
       window.location.href = url
     } catch (error) {
       console.error("Error creating checkout session:", error)
-      alert("Failed to start checkout process. Please try again.")
+      alert(`Failed to start checkout process: ${error.message || error}. Please try again.`)
     } finally {
       setLoading(null)
     }
